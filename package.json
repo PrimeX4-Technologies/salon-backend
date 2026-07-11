@@ -7,7 +7,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "ts-node-dev --esm --respawn --transpile-only src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec \"npm run build && node dist/index.js\"",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts"

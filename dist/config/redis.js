@@ -1,10 +1,9 @@
-import { Redis } from "ioredis";
-import { config } from "./env.js";
-const redisClient = new Redis(config.REDIS_URL, {
-    maxRetriesPerRequest: 3,
-    retryStrategy(times) {
-        return Math.min(times * 50, 2000);
-    }
-});
-redisClient.on('connect', () => console.log('Redis client connected'));
-redisClient.on('error', (error) => console.error('Redis client error:', error));
+export const redisOptions = {
+    lazyConnect: true,
+    enableReadyCheck: true,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 2,
+    connectTimeout: 5_000,
+    commandTimeout: 3_000,
+    retryStrategy: (attempt) => Math.min(attempt * 100, 2_000),
+};
