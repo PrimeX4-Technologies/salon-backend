@@ -72,6 +72,7 @@ const start = async (): Promise<void> => {
     logger.info("API server started", {
       environment: config.NODE_ENV,
       port: config.PORT,
+      timeZone: config.TIME_ZONE,
     });
   } catch (error) {
     logger.error("Application startup failed", error);

@@ -5,10 +5,11 @@
   "license": "UNLICENCED",
   "author": "primex",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec \"npm run build && node dist/index.js\"",
-    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts"
   },
