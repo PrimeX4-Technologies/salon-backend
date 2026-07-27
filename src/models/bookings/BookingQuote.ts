@@ -23,6 +23,8 @@ export interface IBookingQuote {
   branchId: Types.ObjectId;
   proposedStartAt?: Date;
   proposedEndAt?: Date;
+  travelMinutesBefore: number;
+  travelMinutesAfter: number;
   currency: string;
   lines: IQuoteLine[];
   quotedTotalMinor: number;
@@ -69,6 +71,28 @@ const BookingQuoteSchema = new Schema<IBookingQuote>(
     branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
     proposedStartAt: Date,
     proposedEndAt: Date,
+    travelMinutesBefore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1440,
+      required: true,
+      validate: {
+        validator: isNonNegativeInteger,
+        message: "Travel minutes must be a non-negative integer",
+      },
+    },
+    travelMinutesAfter: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1440,
+      required: true,
+      validate: {
+        validator: isNonNegativeInteger,
+        message: "Travel minutes must be a non-negative integer",
+      },
+    },
     currency: { type: String, required: true, uppercase: true, match: CURRENCY_PATTERN },
     lines: { type: [QuoteLineSchema], required: true },
     quotedTotalMinor: {

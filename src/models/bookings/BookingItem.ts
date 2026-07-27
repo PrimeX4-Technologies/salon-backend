@@ -201,8 +201,21 @@ BookingItemSchema.pre("validate", function () {
     if (previous && previous.endAt > phase.startAt) {
       this.invalidate("phases", "Service phases cannot overlap");
     }
-    if (phase.startAt < this.startAt || phase.endAt > this.endAt) {
+    if (
+      phase.type !== "travel" &&
+      (phase.startAt < this.startAt || phase.endAt > this.endAt)
+    ) {
       this.invalidate("phases", `Phase ${phase.key} must be within the item range`);
+    }
+    if (
+      phase.type === "travel" &&
+      phase.startAt < this.endAt &&
+      phase.endAt > this.startAt
+    ) {
+      this.invalidate(
+        "phases",
+        `Travel phase ${phase.key} cannot overlap the service item range`,
+      );
     }
   });
 });

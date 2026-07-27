@@ -10,6 +10,9 @@ export interface IBookingPayment {
   provider: string;
   merchantAccountId?: string;
   providerTransactionId?: string;
+  providerCheckoutId?: string;
+  encryptedCheckoutData?: string;
+  checkoutExpiresAt?: Date;
   idempotencyKey: string;
   amountMinor: number;
   currency: string;
@@ -36,6 +39,9 @@ const BookingPaymentSchema = new Schema<IBookingPayment>(
     provider: { type: String, required: true, trim: true, lowercase: true, maxlength: 80 },
     merchantAccountId: { type: String, trim: true, maxlength: 255, select: false },
     providerTransactionId: { type: String, trim: true, maxlength: 255, select: false },
+    providerCheckoutId: { type: String, trim: true, maxlength: 255, select: false },
+    encryptedCheckoutData: { type: String, select: false },
+    checkoutExpiresAt: Date,
     idempotencyKey: { type: String, required: true, trim: true, maxlength: 200, select: false },
     amountMinor: {
       type: Number,
@@ -67,6 +73,13 @@ BookingPaymentSchema.index(
   {
     unique: true,
     partialFilterExpression: { providerTransactionId: { $type: "string" } },
+  },
+);
+BookingPaymentSchema.index(
+  { provider: 1, merchantAccountId: 1, providerCheckoutId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { providerCheckoutId: { $type: "string" } },
   },
 );
 BookingPaymentSchema.index({ branchId: 1, bookingId: 1, status: 1, createdAt: -1 });

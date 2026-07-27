@@ -1,7 +1,11 @@
 import { Schema, type Types } from "mongoose";
 
 import { type IPricePresentation, PricePresentationSchema } from "../core/pricing.js";
-import { getOrCreateModel, normalizeCode } from "../core/shared.js";
+import {
+  getOrCreateModel,
+  isSafeExternalHttpsUrl,
+  normalizeCode,
+} from "../core/shared.js";
 
 export interface IProduct {
   categoryId: Types.ObjectId;
@@ -84,6 +88,16 @@ ProductSchema.pre("validate", function () {
   }
   if (this.purchaseMode === "external_link" && !this.externalPurchaseUrl) {
     this.invalidate("externalPurchaseUrl", "External-link products require a purchase URL");
+  }
+  if (
+    this.purchaseMode === "external_link" &&
+    this.externalPurchaseUrl &&
+    !isSafeExternalHttpsUrl(this.externalPurchaseUrl)
+  ) {
+    this.invalidate(
+      "externalPurchaseUrl",
+      "External product links must be safe public HTTPS URLs",
+    );
   }
 });
 

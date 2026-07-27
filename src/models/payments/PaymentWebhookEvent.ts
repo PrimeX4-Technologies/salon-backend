@@ -12,6 +12,9 @@ export interface IPaymentWebhookEvent {
   status: "received" | "processing" | "processed" | "failed" | "ignored";
   attempts: number;
   nextAttemptAt?: Date;
+  lockedAt?: Date;
+  lockedBy?: string;
+  lockExpiresAt?: Date;
   processedAt?: Date;
   lastError?: string;
   createdAt: Date;
@@ -33,6 +36,9 @@ const PaymentWebhookEventSchema = new Schema<IPaymentWebhookEvent>(
     },
     attempts: { type: Number, default: 0, min: 0 },
     nextAttemptAt: Date,
+    lockedAt: Date,
+    lockedBy: { type: String, trim: true, maxlength: 200, select: false },
+    lockExpiresAt: Date,
     processedAt: Date,
     lastError: { type: String, trim: true, maxlength: 2000, select: false },
   },
@@ -43,7 +49,35 @@ PaymentWebhookEventSchema.index(
   { provider: 1, merchantAccountId: 1, providerEventId: 1 },
   { unique: true },
 );
-PaymentWebhookEventSchema.index({ status: 1, nextAttemptAt: 1 });
+PaymentWebhookEventSchema.index({
+  status: 1,
+  nextAttemptAt: 1,
+  lockExpiresAt: 1,
+});
+
+PaymentWebhookEventSchema.pre("validate", function () {
+  if (
+    this.status === "processing" &&
+    (!this.lockedAt || !this.lockedBy || !this.lockExpiresAt)
+  ) {
+    this.invalidate(
+      "lockExpiresAt",
+      "A processing webhook requires a complete worker lease",
+    );
+  }
+  if (
+    this.lockedAt &&
+    this.lockExpiresAt &&
+    this.lockExpiresAt <= this.lockedAt
+  ) {
+    this.invalidate("lockExpiresAt", "Worker lease must expire after it starts");
+  }
+  if (this.status !== "processing") {
+    this.lockedAt = undefined;
+    this.lockedBy = undefined;
+    this.lockExpiresAt = undefined;
+  }
+});
 
 const PaymentWebhookEvent = getOrCreateModel<IPaymentWebhookEvent>(
   "PaymentWebhookEvent",

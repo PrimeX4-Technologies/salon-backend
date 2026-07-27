@@ -45,6 +45,15 @@ BranchSchema.index(
 );
 BranchSchema.index({ isActive: 1, bookingsEnabled: 1 });
 
+BranchSchema.pre("validate", function () {
+  if (this.isPrimary && !this.isActive) {
+    this.invalidate("isActive", "The primary branch must be active");
+  }
+  if (!this.isActive && this.bookingsEnabled) {
+    this.invalidate("bookingsEnabled", "An inactive branch cannot accept bookings");
+  }
+});
+
 const Branch = getOrCreateModel<IBranch>("Branch", BranchSchema);
 
 export { BranchSchema };

@@ -29,7 +29,7 @@ export interface IServicePackage {
   slug: string;
   description?: string;
   kind: "bundle" | "wedding" | "event";
-  bookingMode: "instant" | "request_quote" | "consultation_required";
+  bookingMode: "request_quote" | "consultation_required";
   minimumPartySize: number;
   maximumPartySize?: number;
   allowsOffsite: boolean;
@@ -83,7 +83,7 @@ const ServicePackageSchema = new Schema<IServicePackage>(
     kind: { type: String, enum: ["bundle", "wedding", "event"], default: "bundle" },
     bookingMode: {
       type: String,
-      enum: ["instant", "request_quote", "consultation_required"],
+      enum: ["request_quote", "consultation_required"],
       default: "request_quote",
     },
     minimumPartySize: { type: Number, default: 1, min: 1, max: 500 },
