@@ -11,6 +11,7 @@ import { rejectUnsafeKeys } from "./api/middlewares/request-safety.middleware.js
 import apiRouter from "./api/routes/index.js";
 import { config } from "./config/env.js";
 import { isDBReady } from "./config/database.js";
+import openApiRouter from "./docs/openapi.routes.js";
 import { redisService } from "./services/redis.service.js";
 
 const app = express();
@@ -24,7 +25,6 @@ app.set("trust proxy", config.TRUST_PROXY);
 app.set("query parser", "simple");
 
 app.use(requestContext);
-app.use(helmet());
 app.use(compression());
 app.use(
   cors({
@@ -58,6 +58,8 @@ app.use(
     maxAge: 86_400,
   }),
 );
+app.use(openApiRouter);
+app.use(helmet());
 app.use(
   "/api/v1/webhooks/payments",
   express.raw({
@@ -110,6 +112,7 @@ app.get(["/health", "/healthz"], healthHandler);
 app.get(["/ready", "/readyz"], readinessHandler);
 
 app.use("/api/v1", apiRateLimiter, apiRouter);
+app.use("/api/v1", openApiRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

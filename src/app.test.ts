@@ -39,6 +39,26 @@ describe("application shell", () => {
     });
   });
 
+  it("serves an OpenAPI document for Swagger and Postman imports", async () => {
+    const response = await request(app).get("/openapi.json");
+
+    expect(response.status).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.body).toMatchObject({
+      openapi: "3.1.0",
+      info: {
+        title: "Salon Booking API",
+      },
+      paths: {
+        "/api/v1/auth/login": {
+          post: {
+            tags: ["Auth"],
+          },
+        },
+      },
+    });
+  });
+
   it("returns the consistent error contract for unknown routes", async () => {
     const response = await request(app).get("/api/v1/does-not-exist");
 

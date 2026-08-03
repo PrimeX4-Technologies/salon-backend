@@ -7,11 +7,24 @@ The application is implemented with Node.js, Express, TypeScript, MongoDB/Mongoo
 This README is the implementation, frontend, and operations handoff. Route files and Zod validators remain the final source of truth for individual request fields:
 
 - [Route composition](src/api/routes/index.ts)
+- [OpenAPI document builder](src/docs/openapi.ts)
 - [Request validators](src/validation)
 - [Additional business/catalog validators](src/api/validators)
 - [Models](src/models)
 - [Services](src/services)
 - [Provider ports](src/ports)
+
+Interactive API documentation is available after the server starts:
+
+- Swagger UI: `http://localhost:5000/docs/`
+- Raw OpenAPI JSON: `http://localhost:5000/openapi.json`
+- API-prefixed OpenAPI JSON: `http://localhost:5000/api/v1/openapi.json`
+
+Postman can import the raw JSON URL directly. Frontend teams can generate TypeScript API types with:
+
+```bash
+npx openapi-typescript http://localhost:5000/openapi.json -o src/api/schema.d.ts
+```
 
 ## Scope and ownership
 
@@ -1222,9 +1235,7 @@ When adding or changing an endpoint:
 3. Enforce ownership/permission/branch scope in the service, not only middleware.
 4. Decide whether the mutation needs a booking-configuration writer lease, allocation locks, transaction, audit, outbox event, or idempotency.
 5. Add tests for success, validation, forbidden scope, concurrency/conflict, and replay where relevant.
-6. Update this endpoint/behavior contract.
-
-There is currently no generated OpenAPI document. Frontend teams should use route files plus validators for field-level contracts and should not infer undocumented fields from database models.
+6. Update the OpenAPI document and this endpoint/behavior contract.
 
 ## Explicitly not implemented
 
@@ -1247,7 +1258,6 @@ To prevent planning mistakes, the following are outside the current implementati
 - Automatic reminder/event-to-notification generation.
 - Inbound ERP webhooks.
 - Direct package-to-booking expansion.
-- A generated OpenAPI specification.
 - A frontend.
 
 These boundaries are intentional extension points, not permission to use mock providers in production.
