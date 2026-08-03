@@ -8,11 +8,13 @@ This README is the implementation, frontend, and operations handoff. Route files
 
 - [Route composition](src/api/routes/index.ts)
 - [OpenAPI document builder](src/docs/openapi.ts)
+- [OpenAPI request/response schemas](src/docs/openapi.schemas.ts)
 - [Request validators](src/validation)
 - [Additional business/catalog validators](src/api/validators)
 - [Models](src/models)
 - [Services](src/services)
 - [Provider ports](src/ports)
+- [Setup and API execution order](INSTRUCTION.md)
 
 Interactive API documentation is available after the server starts:
 
@@ -25,6 +27,22 @@ Postman can import the raw JSON URL directly. Frontend teams can generate TypeSc
 ```bash
 npx openapi-typescript http://localhost:5000/openapi.json -o src/api/schema.d.ts
 ```
+
+To hand another team a static file without running the server:
+
+```bash
+npm run docs:export
+```
+
+This writes `openapi.json` in the current directory. Pass a different output
+path after `--`, for example `npm run docs:export -- artifacts/salon-api.json`.
+
+The OpenAPI 3.1 document covers all registered API methods, health/readiness,
+concrete request bodies generated from the runtime Zod validators, typed query
+parameters, required idempotency/CSRF/request headers, pagination envelopes,
+domain response components, and the shared error contract. Contract tests fail
+on missing component references, generic body fallbacks, duplicate operations,
+or accidental route-count changes.
 
 ## Scope and ownership
 
@@ -180,7 +198,13 @@ Redis is not an optional cache. It is required for:
 
    Generate a different value for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `AUTH_ACTION_TOKEN_SECRET`.
 
-3. Create the first administrator **before** business bootstrap.
+3. Create/verify MongoDB indexes before accepting application writes.
+
+   ```bash
+   npm run db:indexes:dev
+   ```
+
+4. Create the first administrator **before** business bootstrap.
 
    ```bash
    npm run bootstrap:admin
@@ -188,21 +212,15 @@ Redis is not an optional cache. It is required for:
 
    The command creates one local admin and active `StaffAccess` with every permission and all-branch access. It refuses to create another initial admin. Remove `BOOTSTRAP_ADMIN_PASSWORD` from the environment after successful use.
 
-4. Start the API.
+5. Start the API.
 
    ```bash
    npm run dev
    ```
 
-5. Log in as the bootstrap admin, then call `POST /api/v1/admin/business/bootstrap`. That protected, one-time transaction creates the singleton business profile, primary branch, and business settings. It rejects a second bootstrap.
+6. Log in as the bootstrap admin, then call `POST /api/v1/admin/business/bootstrap`. That protected, one-time transaction creates the singleton business profile, primary branch, and business settings. It rejects a second bootstrap.
 
-6. Configure branch hours, catalog, branch services, staff capability, employee schedules, resources, and optional provider adapters.
-
-7. Create/verify indexes.
-
-   ```bash
-   npm run db:indexes:dev
-   ```
+7. Configure branch hours, catalog, branch services, staff capability, employee schedules, resources, and optional provider adapters.
 
 8. Run the operations worker while developing asynchronous features.
 
@@ -288,6 +306,8 @@ Concrete payment, messaging, event-bus, and ERP adapter credentials are deployme
 | `npm run bootstrap:admin:prod` | Built first-admin command |
 | `npm run db:indexes:dev` | Create/synchronize required indexes from source |
 | `npm run db:indexes` | Built production index command |
+| `npm run docs:export` | Export OpenAPI JSON from TypeScript source |
+| `npm run docs:export:prod` | Export OpenAPI JSON from compiled production code |
 | `npm run typecheck` | TypeScript check without emitting files |
 | `npm run lint` | ESLint with zero warnings allowed |
 | `npm run test` | Vitest watch mode |
@@ -1235,7 +1255,10 @@ When adding or changing an endpoint:
 3. Enforce ownership/permission/branch scope in the service, not only middleware.
 4. Decide whether the mutation needs a booking-configuration writer lease, allocation locks, transaction, audit, outbox event, or idempotency.
 5. Add tests for success, validation, forbidden scope, concurrency/conflict, and replay where relevant.
-6. Update the OpenAPI document and this endpoint/behavior contract.
+6. Register the route's OpenAPI metadata and response model. Request/query
+   components are generated from the runtime Zod schema.
+7. Update this endpoint/behavior contract and `INSTRUCTION.md` when operational
+   order or prerequisites change.
 
 ## Explicitly not implemented
 

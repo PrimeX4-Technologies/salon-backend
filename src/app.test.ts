@@ -59,6 +59,16 @@ describe("application shell", () => {
     });
   });
 
+  it("serves Swagger UI with a restrictive documentation CSP", async () => {
+    const response = await request(app).get("/docs/");
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-security-policy"]).toContain(
+      "default-src 'self'",
+    );
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
   it("returns the consistent error contract for unknown routes", async () => {
     const response = await request(app).get("/api/v1/does-not-exist");
 
@@ -102,6 +112,17 @@ describe("application shell", () => {
     expect(response.status).toBe(400);
     const body = response.body as unknown as ErrorResponseBody;
     expect(body.error.code).toBe("INVALID_JSON");
+  });
+
+  it("reports unsupported JSON charsets as a client error", async () => {
+    const response = await request(app)
+      .post("/api/v1/does-not-exist")
+      .set("Content-Type", "application/json; charset=unsupported")
+      .send("{}");
+
+    expect(response.status).toBe(415);
+    const body = response.body as unknown as ErrorResponseBody;
+    expect(body.error.code).toBe("UNSUPPORTED_REQUEST_BODY");
   });
 
   it("captures exact payment-webhook bytes for provider verification", async () => {

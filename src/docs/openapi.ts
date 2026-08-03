@@ -1,4 +1,11 @@
 import { config } from "../config/env.js";
+import {
+  inputSchemas,
+  responseSchemas,
+  type InputSchemaName,
+  type OpenApiSchema,
+  type ResponseSchemaName,
+} from "./openapi.schemas.js";
 
 type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 type SecurityMode = "public" | "auth" | "staff" | "admin" | "customer" | "employee";
@@ -16,134 +23,6 @@ interface ApiRoute {
 }
 
 const objectIdPattern = "^[a-fA-F0-9]{24}$";
-
-const schemas = {
-  ApiSuccess: {
-    type: "object",
-    properties: {
-      success: { type: "boolean", example: true },
-      data: { type: "object", additionalProperties: true },
-      meta: { type: "object", additionalProperties: true },
-    },
-    required: ["success"],
-  },
-  ApiError: {
-    type: "object",
-    properties: {
-      success: { type: "boolean", example: false },
-      error: {
-        type: "object",
-        properties: {
-          code: { type: "string", example: "VALIDATION_ERROR" },
-          message: { type: "string" },
-          details: {},
-          requestId: { type: "string", format: "uuid" },
-        },
-        required: ["code", "message", "requestId"],
-      },
-    },
-    required: ["success", "error"],
-  },
-  CustomerRegistrationInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      name: { type: "string", minLength: 2, maxLength: 120, example: "Nimali Perera" },
-      email: { type: "string", format: "email", example: "nimali@example.com" },
-      phone: { type: "string", pattern: "^\\+[1-9]\\d{7,14}$", example: "+94771234567" },
-      password: {
-        type: "string",
-        format: "password",
-        minLength: 8,
-        maxLength: 200,
-        example: "StrongPass123",
-      },
-    },
-    required: ["name", "password"],
-  },
-  LoginInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      identifier: {
-        type: "string",
-        minLength: 3,
-        maxLength: 254,
-        example: "nimali@example.com",
-      },
-      password: { type: "string", format: "password", example: "StrongPass123" },
-    },
-    required: ["identifier", "password"],
-  },
-  GoogleLoginInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      idToken: {
-        type: "string",
-        minLength: 100,
-        maxLength: 10_000,
-        description: "Google ID token. Customer accounts only.",
-      },
-    },
-    required: ["idToken"],
-  },
-  RefreshTokenInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      refreshToken: {
-        type: "string",
-        description: "Optional when the refresh token is sent via secure cookie.",
-      },
-    },
-  },
-  ChangePasswordInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      currentPassword: { type: "string", format: "password" },
-      newPassword: { type: "string", format: "password", minLength: 8 },
-    },
-    required: ["newPassword"],
-  },
-  ForgotPasswordInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      identifier: { type: "string", minLength: 3, maxLength: 254 },
-    },
-    required: ["identifier"],
-  },
-  ResetPasswordInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      token: { type: "string", minLength: 32, maxLength: 512 },
-      newPassword: { type: "string", format: "password", minLength: 8 },
-    },
-    required: ["token", "newPassword"],
-  },
-  ConfirmEmailInput: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      token: { type: "string", minLength: 32, maxLength: 512 },
-    },
-    required: ["token"],
-  },
-  GenericJsonBody: {
-    type: "object",
-    additionalProperties: true,
-    description:
-      "Request body validated by backend Zod schemas. See README for module behavior; this OpenAPI file gives route coverage for Swagger/Postman and can be enriched with exact DTOs over time.",
-  },
-  IdempotentJsonBody: {
-    allOf: [{ $ref: "#/components/schemas/GenericJsonBody" }],
-    description:
-      "Validated JSON body. Mutating booking/payment requests should use an Idempotency-Key header when supported by the operation.",
-  },
-} as const;
 
 const authRoutes: ApiRoute[] = [
   {
@@ -592,60 +471,485 @@ const routes = [
   ...integrationRoutes,
 ];
 
-const successResponse = (description = "Successful response") => ({
-  description,
+type OperationKey = `${HttpMethod} ${string}`;
+
+const operationKey = (route: Pick<ApiRoute, "method" | "path">): OperationKey =>
+  `${route.method} ${route.path}`;
+
+const bodySchemaByOperation: Partial<Record<OperationKey, InputSchemaName>> = {
+  "patch /api/v1/customers/me": "MyCustomerProfileUpdateInput",
+  "post /api/v1/customers": "CustomerCreateInput",
+  "patch /api/v1/customers/{customerId}": "CustomerUpdateInput",
+
+  "post /api/v1/customer/bookings": "BookingCreateInput",
+  "post /api/v1/customer/bookings/{bookingId}/cancel": "BookingCancelInput",
+  "post /api/v1/customer/bookings/{bookingId}/reschedule": "BookingRescheduleInput",
+  "post /api/v1/customer/waitlist": "WaitlistCreateInput",
+  "post /api/v1/customer/waitlist/{waitlistEntryId}/cancel": "WaitlistCancelInput",
+  "post /api/v1/customer/inquiries": "InquiryCreateInput",
+  "post /api/v1/customer/quotes/{quoteId}/reject": "QuoteActionInput",
+  "post /api/v1/staff/bookings": "BookingCreateInput",
+  "post /api/v1/staff/bookings/{bookingId}/cancel": "BookingCancelInput",
+  "post /api/v1/staff/bookings/{bookingId}/reschedule": "BookingRescheduleInput",
+  "post /api/v1/staff/bookings/{bookingId}/transition": "BookingTransitionInput",
+  "put /api/v1/staff/bookings/{bookingId}/external-settlement": "ExternalSettlementInput",
+  "post /api/v1/staff/waitlist": "WaitlistCreateInput",
+  "post /api/v1/staff/waitlist/{waitlistEntryId}/cancel": "WaitlistCancelInput",
+  "post /api/v1/staff/waitlist/{waitlistEntryId}/offer": "WaitlistOfferInput",
+  "post /api/v1/staff/inquiries/{inquiryId}/review": "InquiryReviewInput",
+  "post /api/v1/staff/inquiries/{inquiryId}/reject": "InquiryRejectInput",
+  "post /api/v1/staff/inquiries/{inquiryId}/quotes": "QuoteCreateInput",
+  "post /api/v1/staff/quotes/{quoteId}/schedule": "AcceptedQuoteScheduleInput",
+
+  "post /api/v1/admin/business/bootstrap": "BusinessBootstrapInput",
+  "put /api/v1/admin/business/profile": "BusinessProfileUpdateInput",
+  "put /api/v1/admin/business/settings": "BusinessSettingsUpdateInput",
+  "post /api/v1/admin/branches": "BranchCreateInput",
+  "patch /api/v1/admin/branches/{branchId}": "BranchUpdateInput",
+  "post /api/v1/admin/branches/{branchId}/hours": "BranchHoursCreateInput",
+  "patch /api/v1/admin/branches/{branchId}/hours/{hoursId}": "BranchHoursUpdateInput",
+
+  "post /api/v1/admin/catalog/categories": "CategoryCreateInput",
+  "patch /api/v1/admin/catalog/categories/{categoryId}": "CategoryUpdateInput",
+  "post /api/v1/admin/catalog/services": "ServiceCreateInput",
+  "patch /api/v1/admin/catalog/services/{serviceId}": "ServiceUpdateInput",
+  "post /api/v1/admin/catalog/products": "ProductCreateInput",
+  "patch /api/v1/admin/catalog/products/{productId}": "ProductUpdateInput",
+  "post /api/v1/admin/catalog/packages": "PackageCreateInput",
+  "patch /api/v1/admin/catalog/packages/{packageId}": "PackageUpdateInput",
+  "post /api/v1/admin/catalog/branch-services": "BranchServiceCreateInput",
+  "patch /api/v1/admin/catalog/branch-services/{branchServiceId}": "BranchServiceUpdateInput",
+
+  "patch /api/v1/employees/me": "MyEmployeeProfileUpdateInput",
+  "post /api/v1/employees/me/time-off": "TimeOffCreateInput",
+  "post /api/v1/employees": "EmployeeCreateInput",
+  "patch /api/v1/employees/{employeeId}": "EmployeeUpdateInput",
+  "post /api/v1/employees/{employeeId}/account": "EmployeeAccountProvisionInput",
+  "put /api/v1/employees/{employeeId}/access": "StaffAccessInput",
+  "put /api/v1/employees/{employeeId}/skills/{skillId}": "EmployeeSkillUpsertInput",
+  "put /api/v1/employees/{employeeId}/services/{serviceId}/branches/{branchId}": "EmployeeServiceUpsertInput",
+  "post /api/v1/admins": "AdminCreateInput",
+  "patch /api/v1/admins/{adminId}": "AdminUpdateInput",
+  "put /api/v1/admins/{adminId}/access": "StaffAccessInput",
+  "post /api/v1/skills": "SkillCreateInput",
+  "patch /api/v1/skills/{skillId}": "SkillUpdateInput",
+  "post /api/v1/employee-levels": "EmployeeLevelCreateInput",
+  "patch /api/v1/employee-levels/{levelId}": "EmployeeLevelUpdateInput",
+
+  "post /api/v1/admin/scheduling/branches/{branchId}/employees/{employeeId}/schedules": "EmployeeScheduleCreateInput",
+  "patch /api/v1/admin/scheduling/branches/{branchId}/employees/{employeeId}/schedules/{scheduleId}": "EmployeeScheduleUpdateInput",
+  "post /api/v1/admin/scheduling/time-off/{timeOffId}/approve": "TimeOffDecisionInput",
+  "post /api/v1/admin/scheduling/time-off/{timeOffId}/reject": "TimeOffDecisionInput",
+  "post /api/v1/admin/scheduling/time-off/{timeOffId}/cancel": "TimeOffDecisionInput",
+  "post /api/v1/admin/scheduling/branches/{branchId}/calendar-blocks": "CalendarBlockCreateInput",
+  "patch /api/v1/admin/scheduling/branches/{branchId}/calendar-blocks/{blockId}": "CalendarBlockUpdateInput",
+  "post /api/v1/admin/scheduling/branches/{branchId}/resources": "BookableResourceCreateInput",
+  "patch /api/v1/admin/scheduling/branches/{branchId}/resources/{resourceId}": "BookableResourceUpdateInput",
+
+  "post /api/v1/customer/payments/advance-checkouts": "AdvanceCheckoutCreateInput",
+  "post /api/v1/staff/payments/advances": "AdvanceRecordInput",
+  "post /api/v1/staff/payments/{paymentId}/refunds": "RefundRecordInput",
+
+  "put /api/v1/notifications/preferences": "NotificationPreferenceUpdateInput",
+  "post /api/v1/notifications/push-subscriptions": "PushSubscriptionCreateInput",
+  "post /api/v1/admin/notifications/templates": "NotificationTemplateCreateInput",
+  "patch /api/v1/admin/notifications/templates/{templateId}": "NotificationTemplateUpdateInput",
+
+  "post /api/v1/admin/integrations/connectors": "ConnectorCreateInput",
+  "patch /api/v1/admin/integrations/connectors/{connectorId}": "ConnectorUpdateInput",
+  "put /api/v1/admin/integrations/connectors/{connectorId}/status": "ConnectorStatusInput",
+  "put /api/v1/admin/integrations/connectors/{connectorId}/mappings": "MappingUpsertInput",
+  "post /api/v1/admin/integrations/connectors/{connectorId}/mappings/{mappingId}/resolve": "MappingConflictResolutionInput",
+  "post /api/v1/admin/integrations/connectors/{connectorId}/sync-jobs": "SyncJobCreateInput",
+};
+
+const querySchemaByPath: Partial<Record<string, InputSchemaName>> = {
+  "/api/v1/public/branches": "BranchListQuery",
+  "/api/v1/public/branches/{branchId}/hours": "CurrentBranchHoursQuery",
+  "/api/v1/public/availability": "AvailabilityQuery",
+  "/api/v1/public/catalog/categories": "CategoryListQuery",
+  "/api/v1/public/catalog/services": "CatalogListQuery",
+  "/api/v1/public/catalog/services/{serviceId}": "ServiceDetailQuery",
+  "/api/v1/public/catalog/products": "CatalogListQuery",
+  "/api/v1/public/catalog/packages": "CatalogListQuery",
+  "/api/v1/customers": "CustomerListQuery",
+  "/api/v1/customer/bookings": "BookingListQuery",
+  "/api/v1/staff/bookings": "BookingListQuery",
+  "/api/v1/employees/me/bookings": "EmployeeBookingListQuery",
+  "/api/v1/customer/waitlist": "WaitlistListQuery",
+  "/api/v1/staff/waitlist": "WaitlistListQuery",
+  "/api/v1/customer/inquiries": "InquiryListQuery",
+  "/api/v1/staff/inquiries": "InquiryListQuery",
+  "/api/v1/admin/branches": "BranchListQuery",
+  "/api/v1/admin/branches/{branchId}/hours": "BranchHoursListQuery",
+  "/api/v1/admin/catalog/categories": "CategoryListQuery",
+  "/api/v1/admin/catalog/services": "CatalogListQuery",
+  "/api/v1/admin/catalog/services/{serviceId}": "ServiceDetailQuery",
+  "/api/v1/admin/catalog/products": "CatalogListQuery",
+  "/api/v1/admin/catalog/packages": "CatalogListQuery",
+  "/api/v1/admin/catalog/branch-services": "CatalogListQuery",
+  "/api/v1/employees/me/time-off": "MyTimeOffListQuery",
+  "/api/v1/employees": "EmployeeListQuery",
+  "/api/v1/employees/{employeeId}/services": "EmployeeServiceListQuery",
+  "/api/v1/admins": "AdminListQuery",
+  "/api/v1/skills": "ActiveOnlyQuery",
+  "/api/v1/employee-levels": "ActiveOnlyQuery",
+  "/api/v1/admin/scheduling/branches/{branchId}/employees/{employeeId}/schedules": "EmployeeScheduleListQuery",
+  "/api/v1/admin/scheduling/time-off": "StaffTimeOffListQuery",
+  "/api/v1/admin/scheduling/branches/{branchId}/calendar-blocks": "CalendarBlockListQuery",
+  "/api/v1/admin/scheduling/branches/{branchId}/resources": "BookableResourceListQuery",
+  "/api/v1/customer/payments": "CustomerPaymentListQuery",
+  "/api/v1/staff/payments": "StaffPaymentListQuery",
+  "/api/v1/staff/payments/webhook-events": "PaymentWebhookEventListQuery",
+  "/api/v1/admin/notifications/queue": "NotificationQueueListQuery",
+  "/api/v1/admin/notifications/templates": "NotificationTemplateListQuery",
+  "/api/v1/admin/integrations/connectors": "ConnectorListQuery",
+  "/api/v1/admin/integrations/connectors/{connectorId}/mappings": "MappingListQuery",
+  "/api/v1/admin/integrations/connectors/{connectorId}/sync-jobs": "SyncJobListQuery",
+  "/api/v1/admin/audit-logs": "AuditLogListQuery",
+  "/api/v1/admin/outbox": "OutboxListQuery",
+};
+
+const paginatedQuerySchemas = new Set<InputSchemaName>([
+  "BranchListQuery",
+  "BranchHoursListQuery",
+  "CategoryListQuery",
+  "CatalogListQuery",
+  "CustomerListQuery",
+  "BookingListQuery",
+  "EmployeeBookingListQuery",
+  "WaitlistListQuery",
+  "InquiryListQuery",
+  "EmployeeListQuery",
+  "AdminListQuery",
+  "EmployeeScheduleListQuery",
+  "MyTimeOffListQuery",
+  "StaffTimeOffListQuery",
+  "CalendarBlockListQuery",
+  "BookableResourceListQuery",
+  "CustomerPaymentListQuery",
+  "StaffPaymentListQuery",
+  "PaymentWebhookEventListQuery",
+  "NotificationQueueListQuery",
+  "NotificationTemplateListQuery",
+  "ConnectorListQuery",
+  "MappingListQuery",
+  "SyncJobListQuery",
+  "AuditLogListQuery",
+  "OutboxListQuery",
+]);
+
+const noContentOperations = new Set<OperationKey>([
+  "post /api/v1/auth/logout",
+  "post /api/v1/auth/logout-all",
+  "post /api/v1/auth/password/reset",
+  "delete /api/v1/auth/sessions/{sessionId}",
+  "delete /api/v1/customers/{customerId}",
+  "delete /api/v1/employees/{employeeId}",
+  "delete /api/v1/employees/{employeeId}/skills/{skillId}",
+  "delete /api/v1/employees/{employeeId}/services/{serviceId}/branches/{branchId}",
+  "delete /api/v1/skills/{skillId}",
+  "delete /api/v1/employee-levels/{levelId}",
+  "delete /api/v1/notifications/push-subscriptions/{subscriptionId}",
+]);
+
+const idempotentOperations = new Set<OperationKey>([
+  "post /api/v1/customer/bookings",
+  "post /api/v1/staff/bookings",
+  "post /api/v1/customer/quotes/{quoteId}/accept",
+  "post /api/v1/staff/quotes/{quoteId}/schedule",
+  "post /api/v1/customer/payments/advance-checkouts",
+  "post /api/v1/staff/payments/advances",
+  "post /api/v1/staff/payments/{paymentId}/refunds",
+]);
+
+const unpaginatedArrayOperations = new Set<OperationKey>([
+  "get /api/v1/employees/{employeeId}/skills",
+  "get /api/v1/employees/{employeeId}/services",
+  "get /api/v1/skills",
+  "get /api/v1/employee-levels",
+  "get /api/v1/notifications/push-subscriptions",
+]);
+
+const explicitStatusByOperation: Partial<Record<OperationKey, number>> = {
+  "post /api/v1/auth/password/forgot": 202,
+  "post /api/v1/auth/email-verification/request": 202,
+  "post /api/v1/employees/{employeeId}/account": 201,
+  "post /api/v1/staff/quotes/{quoteId}/schedule": 201,
+  "post /api/v1/staff/payments/{paymentId}/refunds": 201,
+};
+
+const replayAwareOperations = new Set<OperationKey>([
+  "post /api/v1/customer/bookings",
+  "post /api/v1/staff/bookings",
+  "post /api/v1/staff/quotes/{quoteId}/schedule",
+]);
+
+interface ResponseShape {
+  schema: ResponseSchemaName;
+  key?: string;
+}
+
+const responseShapeFor = (route: ApiRoute): ResponseShape => {
+  const { path, method } = route;
+
+  if (["/health", "/healthz"].includes(path)) return { schema: "Health" };
+  if (["/ready", "/readyz"].includes(path)) return { schema: "Readiness" };
+  if (path.startsWith("/api/v1/auth")) {
+    if (["/api/v1/auth/register/customer", "/api/v1/auth/login", "/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/password"].includes(path)) {
+      return { schema: "AuthResult" };
+    }
+    if (path === "/api/v1/auth/me" || path === "/api/v1/auth/email-verification/confirm") {
+      return { schema: "PublicUser", key: "user" };
+    }
+    if (path === "/api/v1/auth/sessions") return { schema: "AuthSession", key: "sessions" };
+    if (path === "/api/v1/auth/password/forgot" || path === "/api/v1/auth/email-verification/request") {
+      return { schema: "AuthActionResult" };
+    }
+    throw new Error(`OpenAPI auth response schema is missing for ${method} ${path}`);
+  }
+  if (path === "/api/v1/public/business") return { schema: "BusinessOverview" };
+  if (path.endsWith("/business/bootstrap")) return { schema: "BusinessBootstrapResult" };
+  if (path.endsWith("/business/profile")) return { schema: "BusinessProfile" };
+  if (path.endsWith("/business/settings")) return { schema: "BusinessSettings" };
+  if (path === "/api/v1/public/branches/{branchId}/hours") return { schema: "PublicBranchHours" };
+  if (path.includes("/branches/") && path.endsWith("/hours") || path.includes("/hours/{hoursId}")) {
+    return { schema: "BranchHours" };
+  }
+  if (path.includes("/branches") && !path.includes("/scheduling/")) return { schema: "Branch" };
+  if (path.endsWith("/availability")) return { schema: "Availability" };
+
+  if (path.includes("/catalog/categories")) return { schema: "CatalogCategory" };
+  if (path.includes("/catalog/branch-services")) return { schema: "BranchService" };
+  if (path.includes("/catalog/services")) return { schema: "Service" };
+  if (path.includes("/catalog/products")) return { schema: "Product" };
+  if (path.includes("/catalog/packages")) return { schema: "ServicePackage" };
+
+  if (path.startsWith("/api/v1/customers")) return { schema: "Customer" };
+  if (path.endsWith("/bookings/expire-holds")) return { schema: "ExpirationResult" };
+  if (path.includes("/bookings/") && path.endsWith("/cancel")) return { schema: "BookingLifecycleResult" };
+  if (path.includes("/bookings/") && path.endsWith("/transition")) return { schema: "BookingLifecycleResult" };
+  if (path.includes("/bookings/") && path.endsWith("/external-settlement")) return { schema: "ExternalSettlementResult" };
+  if (path.includes("/bookings")) return { schema: "Booking" };
+  if (path.endsWith("/waitlist/expire-due")) return { schema: "ExpirationResult" };
+  if (path.includes("/waitlist/") && path.endsWith("/cancel")) return { schema: "EntityStatusResult" };
+  if (path.includes("/waitlist")) return { schema: "WaitlistEntry" };
+  if (path.endsWith("/inquiries/expire-due")) return { schema: "ExpirationResult" };
+  if (path.includes("/inquiries/") && (path.endsWith("/cancel") || path.endsWith("/reject"))) {
+    return { schema: "EntityStatusResult" };
+  }
+  if (path.includes("/inquiries") && path.endsWith("/quotes")) return { schema: "BookingQuote" };
+  if (path.includes("/inquiries")) return { schema: "BookingInquiry" };
+  if (path.includes("/quotes/") && path.endsWith("/accept")) return { schema: "QuoteAcceptanceResult" };
+  if (path.includes("/quotes/") && path.endsWith("/schedule")) return { schema: "QuoteScheduleResult" };
+  if (path.endsWith("/quotes/expire-due")) return { schema: "ExpirationResult" };
+  if (path.includes("/quotes/") && path.endsWith("/reject")) return { schema: "EntityStatusResult" };
+  if (path.includes("/quotes/")) return { schema: "BookingQuote" };
+
+  if (path.startsWith("/api/v1/admins")) {
+    return method === "get" && path === "/api/v1/admins"
+      ? { schema: "AdminListItem" }
+      : { schema: "AdminProfile" };
+  }
+  if (path.startsWith("/api/v1/skills")) return { schema: "Skill" };
+  if (path.startsWith("/api/v1/employee-levels")) return { schema: "EmployeeLevel" };
+  if (path.includes("/employees/") && path.endsWith("/access")) return { schema: "StaffAccess" };
+  if (path.includes("/employees/") && path.includes("/skills")) return { schema: "EmployeeSkill" };
+  if (path.includes("/employees/") && path.includes("/services")) return { schema: "EmployeeService" };
+  if (path.includes("/employees") && path.includes("/schedules")) return { schema: "EmployeeSchedule" };
+  if (path.includes("/time-off")) return { schema: "TimeOff" };
+  if (path.startsWith("/api/v1/employees")) {
+    return method === "get" && path === "/api/v1/employees"
+      ? { schema: "Employee" }
+      : { schema: "EmployeeProfile" };
+  }
+
+  if (path.includes("/calendar-blocks")) return { schema: "CalendarBlock" };
+  if (path.includes("/resources")) return { schema: "BookableResource" };
+  if (path.includes("/payments/webhook-events")) return { schema: "PaymentWebhookEvent" };
+  if (path.endsWith("/payments/advance-checkouts")) return { schema: "AdvanceCheckout" };
+  if (path.includes("/payments")) return { schema: "BookingPayment" };
+  if (path.startsWith("/api/v1/webhooks/payments")) return { schema: "PaymentWebhookAccepted" };
+
+  if (path.endsWith("/notifications/preferences")) return { schema: "NotificationPreference" };
+  if (path.includes("/notifications/push-subscriptions")) return { schema: "PushSubscription" };
+  if (path.includes("/notifications/templates")) return { schema: "NotificationTemplate" };
+  if (path.includes("/notifications/queue")) return { schema: "Notification" };
+
+  if (path.includes("/integrations/connectors") && path.includes("/mappings")) return { schema: "ExternalEntityMapping" };
+  if (path.includes("/integrations/connectors") && path.includes("/sync-jobs")) return { schema: "IntegrationSyncJob" };
+  if (path.includes("/integrations/connectors")) return { schema: "ExternalConnector" };
+  if (path.includes("/audit-logs")) return { schema: "AuditLog" };
+  if (path.includes("/outbox")) return { schema: "OutboxEvent" };
+  throw new Error(`OpenAPI response schema is missing for ${method} ${path}`);
+};
+
+const apiErrorSchema: OpenApiSchema = {
+  type: "object",
+  properties: {
+    success: { type: "boolean", const: false },
+    error: {
+      type: "object",
+      properties: {
+        code: { type: "string", example: "VALIDATION_ERROR" },
+        message: { type: "string" },
+        details: {},
+        requestId: { type: "string", description: "Correlation ID; normally a UUID unless supplied by the client." },
+      },
+      required: ["code", "message", "requestId"],
+      additionalProperties: false,
+    },
+  },
+  required: ["success", "error"],
+  additionalProperties: false,
+};
+
+const paginationMetaSchema: OpenApiSchema = {
+  type: "object",
+  properties: {
+    page: { type: "integer", minimum: 1 },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+    total: { type: "integer", minimum: 0 },
+    totalPages: { type: "integer", minimum: 1 },
+    hasNextPage: { type: "boolean" },
+    hasPreviousPage: { type: "boolean" },
+  },
+  required: ["page", "limit", "total", "totalPages", "hasNextPage", "hasPreviousPage"],
+  additionalProperties: false,
+};
+
+const successEnvelope = (
+  dataSchema: OpenApiSchema,
+  paginated = false,
+  replayAware = false,
+): OpenApiSchema => ({
+  type: "object",
+  properties: {
+    success: { type: "boolean", const: true },
+    data: dataSchema,
+    ...(paginated
+      ? {
+          meta: {
+            type: "object",
+            properties: { pagination: { $ref: "#/components/schemas/PaginationMeta" } },
+            required: ["pagination"],
+            additionalProperties: false,
+          },
+        }
+      : replayAware
+        ? {
+            meta: {
+              type: "object",
+              properties: {
+                idempotentReplay: { type: "boolean", const: true },
+              },
+              required: ["idempotentReplay"],
+              additionalProperties: false,
+            },
+          }
+        : {}),
+  },
+  required: ["success", "data", ...(paginated || replayAware ? ["meta"] : [])],
+  additionalProperties: false,
+});
+
+const commonResponseHeaders = (rateLimited: boolean) => ({
+  "X-Request-Id": { $ref: "#/components/headers/RequestId" },
+  ...(rateLimited
+    ? {
+        "RateLimit-Limit": { $ref: "#/components/headers/RateLimitLimit" },
+        "RateLimit-Remaining": { $ref: "#/components/headers/RateLimitRemaining" },
+        "RateLimit-Reset": { $ref: "#/components/headers/RateLimitReset" },
+      }
+    : {}),
+});
+
+const successResponse = (
+  dataSchema: OpenApiSchema,
+  paginated: boolean,
+  rateLimited: boolean,
+  envelope = true,
+  setsSessionCookies = false,
+  replayAware = false,
+) => ({
+  description: "Successful response",
+  headers: {
+    ...commonResponseHeaders(rateLimited),
+    ...(setsSessionCookies
+      ? { "Set-Cookie": { $ref: "#/components/headers/SetCookie" } }
+      : {}),
+  },
   content: {
     "application/json": {
-      schema: { $ref: "#/components/schemas/ApiSuccess" },
+      schema: envelope
+        ? successEnvelope(dataSchema, paginated, replayAware)
+        : dataSchema,
     },
   },
 });
 
-const errorResponse = (description: string) => ({
+const errorResponse = (description: string, rateLimited: boolean, retryAfter = false) => ({
   description,
-  content: {
-    "application/json": {
-      schema: { $ref: "#/components/schemas/ApiError" },
-    },
+  headers: {
+    ...commonResponseHeaders(rateLimited),
+    ...(retryAfter ? { "Retry-After": { $ref: "#/components/headers/RetryAfter" } } : {}),
   },
+  content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
 });
 
-const extractPathParameters = (path: string) => {
-  const matches = path.matchAll(/\{([^}]+)\}/g);
-  return [...matches].map((match) => ({
+const pathParameterSchema = (name: string): OpenApiSchema => {
+  if (name === "sessionId") return { type: "string", format: "uuid" };
+  if (name === "provider") {
+    return { type: "string", pattern: "^[a-z0-9][a-z0-9_-]*$", minLength: 1, maxLength: 80 };
+  }
+  return name.endsWith("Id")
+    ? { type: "string", pattern: objectIdPattern }
+    : { type: "string" };
+};
+
+const extractPathParameters = (path: string) =>
+  [...path.matchAll(/\{([^}]+)\}/g)].map((match) => ({
     name: match[1],
     in: "path",
     required: true,
-    schema: match[1]?.endsWith("Id")
-      ? { type: "string", pattern: objectIdPattern }
-      : { type: "string" },
+    schema: pathParameterSchema(match[1] ?? ""),
   }));
+
+const queryDescriptions: Record<string, string> = {
+  page: "One-based page number.",
+  limit: "Items per page; maximum 100.",
+  sort: "Sort field. Prefix with '-' for descending order.",
+  search: "Case-insensitive text search.",
+  from: "Inclusive range start as an ISO 8601 timestamp with offset.",
+  to: "Exclusive range end as an ISO 8601 timestamp with offset.",
 };
 
-const queryParameters = (names: string[] = []) =>
-  names.map((name) => ({
+const queryParameters = (schemaName: InputSchemaName | undefined) => {
+  if (!schemaName) return [];
+  const schema = inputSchemas[schemaName];
+  const properties = (schema.properties ?? {}) as Record<string, OpenApiSchema>;
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter((name): name is string => typeof name === "string")
+      : [],
+  );
+  return Object.entries(properties).map(([name, propertySchema]) => ({
     name,
     in: "query",
-    required: false,
-    schema:
-      name === "page" || name === "limit" || name === "durationMinutes"
-        ? { type: "integer", minimum: 1 }
-        : { type: "string" },
+    required: required.has(name),
+    ...(queryDescriptions[name] ? { description: queryDescriptions[name] } : {}),
+    schema: propertySchema,
   }));
-
-const securityFor = (mode: SecurityMode = "auth") => {
-  if (mode === "public") return [];
-  if (mode === "staff") return [{ bearerAuth: [], staffPermissions: [] }];
-  if (mode === "admin") return [{ bearerAuth: [], staffPermissions: [] }];
-  if (mode === "customer") return [{ bearerAuth: [] }];
-  if (mode === "employee") return [{ bearerAuth: [], staffPermissions: [] }];
-  return [{ bearerAuth: [] }];
 };
 
-const requestBodyFor = (route: ApiRoute) => {
+const securityFor = (mode: SecurityMode = "auth") =>
+  mode === "public" ? [] : [{ bearerAuth: [] }];
+
+const requestBodyFor = (route: ApiRoute, schemaName: InputSchemaName | undefined) => {
   if (route.webhook) {
     return {
       required: true,
+      description: "Exact raw provider payload. Signature verification is adapter-specific.",
       content: {
         "application/json": { schema: { type: "object", additionalProperties: true } },
         "text/plain": { schema: { type: "string" } },
@@ -653,105 +957,194 @@ const requestBodyFor = (route: ApiRoute) => {
       },
     };
   }
-
-  if (!route.bodySchema) return undefined;
+  if (!schemaName) return undefined;
   return {
-    required: true,
+    required: operationKey(route) !== "post /api/v1/auth/refresh",
     content: {
-      "application/json": {
-        schema: { $ref: `#/components/schemas/${route.bodySchema}` },
-      },
+      "application/json": { schema: { $ref: `#/components/schemas/${schemaName}` } },
     },
   };
 };
 
+const resolveBodySchema = (route: ApiRoute): InputSchemaName | undefined => {
+  const override = bodySchemaByOperation[operationKey(route)];
+  if (override) return override;
+  if (!route.bodySchema) return undefined;
+  if (route.bodySchema in inputSchemas) return route.bodySchema as InputSchemaName;
+  throw new Error(`OpenAPI request body schema is missing for ${operationKey(route)}`);
+};
+
+const resolveDataSchema = (
+  route: ApiRoute,
+  paginated: boolean,
+  arrayResponse: boolean,
+): OpenApiSchema => {
+  const responseShape = responseShapeFor(route);
+  let schema: OpenApiSchema = { $ref: `#/components/schemas/${responseShape.schema}` };
+  if (paginated || arrayResponse || responseShape.key === "sessions") {
+    schema = { type: "array", items: schema };
+  }
+  if (responseShape.key) {
+    schema = {
+      type: "object",
+      properties: { [responseShape.key]: schema },
+      required: [responseShape.key],
+      additionalProperties: false,
+    };
+  }
+  return schema;
+};
+
+const systemRoutes: ApiRoute[] = [
+  { method: "get", path: "/health", tag: "System", summary: "Liveness check", security: "public" },
+  { method: "get", path: "/healthz", tag: "System", summary: "Liveness check alias", security: "public" },
+  { method: "get", path: "/ready", tag: "System", summary: "MongoDB and Redis readiness check", security: "public" },
+  { method: "get", path: "/readyz", tag: "System", summary: "Readiness check alias", security: "public" },
+];
+
+const documentedRoutes = [...systemRoutes, ...routes];
+const seenOperations = new Set<OperationKey>();
 const paths: Record<string, Record<string, unknown>> = {};
 
-for (const route of routes) {
+for (const route of documentedRoutes) {
+  const key = operationKey(route);
+  if (seenOperations.has(key)) throw new Error(`Duplicate OpenAPI operation: ${key}`);
+  seenOperations.add(key);
+
+  const querySchemaName = route.query
+    ? querySchemaByPath[route.path]
+    : undefined;
+  if (route.query && !querySchemaName) {
+    throw new Error(`OpenAPI query schema is missing for ${key}`);
+  }
+  const bodySchemaName = resolveBodySchema(route);
+  const requestBody = requestBodyFor(route, bodySchemaName);
+  const paginated = querySchemaName
+    ? paginatedQuerySchemas.has(querySchemaName)
+    : false;
+  const arrayResponse = unpaginatedArrayOperations.has(key);
+  const noContent = noContentOperations.has(key);
+  const rateLimited = route.path.startsWith("/api/v1/");
+  const systemResponse = !rateLimited;
+  const setsSessionCookies = !noContent && responseShapeFor(route).schema === "AuthResult";
+  const replayAware = replayAwareOperations.has(key);
+  const statusCode = noContent
+    ? 204
+    : (explicitStatusByOperation[key] ?? route.statusCode ?? 200);
+  const parameters = [
+    { $ref: "#/components/parameters/RequestId" },
+    ...extractPathParameters(route.path),
+    ...queryParameters(querySchemaName),
+    ...(idempotentOperations.has(key)
+      ? [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      : []),
+    ...(key === "post /api/v1/auth/refresh"
+      ? [{ $ref: "#/components/parameters/CsrfToken" }]
+      : []),
+  ];
+  const responses: Record<string, unknown> = {
+    [statusCode]: noContent
+      ? { description: "Completed successfully; no response body.", headers: commonResponseHeaders(rateLimited) }
+      : successResponse(
+          resolveDataSchema(route, paginated, arrayResponse),
+          paginated,
+          rateLimited,
+          !systemResponse,
+          setsSessionCookies,
+          replayAware && statusCode === 200,
+        ),
+    400: errorResponse("Malformed request, validation failure, or missing idempotency key", rateLimited),
+    ...(route.security === "public"
+      ? {}
+      : { 401: errorResponse("Authentication required or token invalid", rateLimited) }),
+    ...(route.security === "public"
+      ? {}
+      : { 403: errorResponse("Role, permission, CSRF, or branch access denied", rateLimited) }),
+    404: errorResponse("Route or resource not found", rateLimited),
+    409: errorResponse("Duplicate, stale-version, state, idempotency, or booking conflict", rateLimited),
+    ...(requestBody ? { 413: errorResponse("Request body exceeds REQUEST_BODY_LIMIT", rateLimited) } : {}),
+    ...(requestBody ? { 415: errorResponse("Request media type, charset, or encoding is unsupported", rateLimited) } : {}),
+    ...(rateLimited
+      ? { 429: errorResponse("Rate limit exceeded", true, true) }
+      : {}),
+    500: errorResponse("Unexpected internal server error", rateLimited),
+    503: errorResponse("MongoDB, Redis, provider, configuration, or request-protection dependency unavailable", rateLimited),
+  };
+  if (route.path === "/ready" || route.path === "/readyz") {
+    responses["503"] = {
+      description: "One or more required dependencies are not ready.",
+      headers: commonResponseHeaders(false),
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/Readiness" },
+        },
+      },
+    };
+  }
+  if (replayAware && statusCode === 201) {
+    responses["200"] = successResponse(
+      resolveDataSchema(route, paginated, arrayResponse),
+      false,
+      rateLimited,
+      true,
+      false,
+      true,
+    );
+  }
+
   const operation = {
     tags: [route.tag],
     summary: route.summary,
     operationId: `${route.method}_${route.path
       .replace(/^\/api\/v1\//, "")
+      .replace(/^\//, "")
       .replace(/[{}]/g, "")
       .replace(/[^a-zA-Z0-9]+/g, "_")
       .replace(/^_|_$/g, "")}`,
     security: securityFor(route.security),
-    parameters: [
-      ...extractPathParameters(route.path),
-      ...queryParameters(route.query),
-      ...(route.method !== "get" && !route.webhook
-        ? [
-            {
-              name: "Idempotency-Key",
-              in: "header",
-              required: false,
-              schema: { type: "string", minLength: 8, maxLength: 120 },
-              description:
-                "Recommended for retryable mutating requests such as booking and payment actions.",
-            },
-          ]
-        : []),
-    ],
-    ...(requestBodyFor(route) ? { requestBody: requestBodyFor(route) } : {}),
-    responses: {
-      [route.statusCode ?? (route.method === "post" ? 200 : route.method === "delete" ? 204 : 200)]:
-        successResponse(),
-      400: errorResponse("Bad request or validation error"),
-      401: errorResponse("Authentication required"),
-      403: errorResponse("Role, permission, or branch access denied"),
-      404: errorResponse("Resource not found"),
-      409: errorResponse("Version conflict, duplicate resource, or booking conflict"),
-      429: errorResponse("Rate limit exceeded"),
-      500: errorResponse("Internal server error"),
-    },
+    parameters,
+    ...(requestBody ? { requestBody } : {}),
+    responses,
   };
 
-  paths[route.path] = {
-    ...(paths[route.path] ?? {}),
-    [route.method]: operation,
-  };
+  paths[route.path] = { ...(paths[route.path] ?? {}), [route.method]: operation };
 }
 
 export const openApiDocument = {
   openapi: "3.1.0",
+  jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
   info: {
     title: "Salon Booking API",
-    version: "1.0.0",
+    version: "1.1.0",
     description:
-      "Single-salon, optional multi-branch booking API for customers, employees, admins, scheduling, catalog, advance payments, notifications, and external ERP/POS integration metadata.",
+      "Single-salon, optional multi-branch booking API. Request components are generated from the same Zod schemas used by Express. Monetary values use integer minor units, timestamps are UTC ISO 8601 values, local calendar dates use YYYY-MM-DD, and business display/scheduling uses the configured IANA time zone.",
     contact: { name: "PrimeX" },
   },
   servers: [
-    {
-      url: `http://localhost:${config.PORT}`,
-      description: "Local development server",
-    },
-    {
-      url: "/",
-      description: "Same origin server",
-    },
+    { url: `http://localhost:${config.PORT}`, description: "Local development server" },
+    { url: "/", description: "Same-origin deployment" },
   ],
   tags: [
+    { name: "System", description: "Liveness and dependency readiness" },
     { name: "Auth", description: "Customer, employee, and admin authentication" },
     { name: "Public", description: "Public salon, branch, and availability APIs" },
     { name: "Public Catalog", description: "Public services, products, and packages" },
     { name: "Customers", description: "Customer profile and CRM APIs" },
     { name: "Customer Bookings", description: "Customer direct booking and waitlist APIs" },
     { name: "Customer Inquiries", description: "Customer quote/inquiry APIs" },
-    { name: "Staff Bookings", description: "Staff booking operations" },
-    { name: "Staff Inquiries", description: "Staff quote/inquiry operations" },
+    { name: "Staff Bookings", description: "Permission- and branch-scoped staff booking operations" },
+    { name: "Staff Inquiries", description: "Permission- and branch-scoped quote/inquiry operations" },
     { name: "Business Admin", description: "Single salon profile, settings, branches, and hours" },
-    { name: "Catalog Admin", description: "Services, products, packages, and branch service setup" },
+    { name: "Catalog Admin", description: "Services, retail products, packages, and branch service setup" },
     { name: "Staff Admin", description: "Admins, employees, skills, levels, and access policy" },
-    { name: "Employee Self Service", description: "Employee profile, booking, and time-off APIs" },
-    { name: "Scheduling Admin", description: "Schedules, resources, time-off, and calendar blocks" },
-    { name: "Payments", description: "Advance payment and refund APIs only" },
-    { name: "Webhooks", description: "Provider webhook ingestion" },
-    { name: "Notifications", description: "Self notification preferences and push subscriptions" },
+    { name: "Employee Self Service", description: "Employee profile, assigned bookings, and time off" },
+    { name: "Scheduling Admin", description: "Schedules, resources, time off, and calendar blocks" },
+    { name: "Payments", description: "Booking advance payment and refund APIs only" },
+    { name: "Webhooks", description: "Signed provider webhook ingestion" },
+    { name: "Notifications", description: "Self-service notification preferences and push subscriptions" },
     { name: "Notifications Admin", description: "Notification queue and template management" },
-    { name: "Integrations", description: "External ERP/POS connector and sync metadata" },
-    { name: "Operations", description: "Audit and outbox operational APIs" },
+    { name: "Integrations", description: "Optional external ERP/POS connector and sync metadata" },
+    { name: "Operations", description: "Audit and transactional outbox operations" },
   ],
   paths,
   components: {
@@ -760,14 +1153,13 @@ export const openApiDocument = {
         type: "http",
         scheme: "bearer",
         bearerFormat: "JWT",
-        description: "Access token returned by /api/v1/auth/login, /google, or /refresh.",
+        description: "Short-lived access token returned by login, Google login, registration, password change, or refresh.",
       },
-      staffPermissions: {
+      refreshCookie: {
         type: "apiKey",
-        in: "header",
-        name: "Authorization",
-        description:
-          "Staff permissions are derived from the authenticated StaffAccess record, not from a client-supplied header.",
+        in: "cookie",
+        name: config.AUTH_REFRESH_COOKIE_NAME,
+        description: "HttpOnly refresh cookie. Browser refresh also requires the X-CSRF-Token header.",
       },
     },
     parameters: {
@@ -775,16 +1167,37 @@ export const openApiDocument = {
         name: "X-Request-Id",
         in: "header",
         required: false,
-        schema: { type: "string", maxLength: 120 },
+        description: "Optional caller correlation ID. Invalid values are replaced by a generated UUID.",
+        schema: { type: "string", pattern: "^[A-Za-z0-9._:-]{1,128}$" },
       },
-    },
-    headers: {
-      RequestId: {
-        description: "Correlation ID for logs and support.",
+      IdempotencyKey: {
+        name: "Idempotency-Key",
+        in: "header",
+        required: true,
+        description: "Required replay-safe operation key. Reusing it with different input returns 409.",
+        schema: { type: "string", minLength: 8, maxLength: 200 },
+      },
+      CsrfToken: {
+        name: "X-CSRF-Token",
+        in: "header",
+        required: false,
+        description: "Required only when refreshToken is read from the HttpOnly cookie; copy the readable CSRF cookie/authentication.csrfToken value.",
         schema: { type: "string" },
       },
     },
-    schemas,
+    headers: {
+      RequestId: { description: "Correlation ID for logs and support.", schema: { type: "string" } },
+      RateLimitLimit: { description: "Maximum requests in the current window.", schema: { type: "integer" } },
+      RateLimitRemaining: { description: "Requests remaining in the current window.", schema: { type: "integer", minimum: 0 } },
+      RateLimitReset: { description: "Unix timestamp when the current rate-limit window resets.", schema: { type: "integer" } },
+      RetryAfter: { description: "Seconds before a rate-limited request should be retried.", schema: { type: "integer", minimum: 1 } },
+      SetCookie: { description: "Refresh and CSRF cookies. Browsers must send credentials on later auth requests.", schema: { type: "string" } },
+    },
+    schemas: {
+      ApiError: apiErrorSchema,
+      PaginationMeta: paginationMetaSchema,
+      ...inputSchemas,
+      ...responseSchemas,
+    },
   },
 } as const;
-

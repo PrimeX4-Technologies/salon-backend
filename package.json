@@ -16,6 +16,8 @@
     "bootstrap:admin:prod": "node dist/scripts/bootstrap-admin.js",
     "db:indexes": "node dist/scripts/create-indexes.js",
     "db:indexes:dev": "tsx src/scripts/create-indexes.ts",
+    "docs:export": "tsx src/scripts/export-openapi.ts",
+    "docs:export:prod": "node dist/scripts/export-openapi.js",
     "worker:operations": "tsx src/workers/operations.worker.ts all",
     "worker:outbox": "tsx src/workers/operations.worker.ts outbox",
     "worker:notifications": "tsx src/workers/operations.worker.ts notifications",
@@ -54,7 +56,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@eslint/js": "^10.0.1",
     "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.8.1",

@@ -15,6 +15,17 @@ interface BodyParserError extends SyntaxError {
   type?: string;
 }
 
+const bodyParserStatus = (error: unknown): number | undefined => {
+  if (
+    !(error instanceof Error) ||
+    !("status" in error) ||
+    typeof (error as BodyParserError).status !== "number"
+  ) {
+    return undefined;
+  }
+  return (error as BodyParserError).status;
+};
+
 const isMongoDuplicateError = (error: unknown): error is MongoDuplicateError =>
   error instanceof Error &&
   "code" in error &&
@@ -61,19 +72,29 @@ const normalizeError = (error: unknown): ApiError => {
 
   if (
     error instanceof SyntaxError &&
-    "status" in error &&
-    (error as BodyParserError).status === 400
+    bodyParserStatus(error) === 400
   ) {
     return ApiError.badRequest("Malformed JSON request body", undefined, "INVALID_JSON");
   }
 
-  if (
-    error instanceof Error &&
-    "status" in error &&
-    (error as BodyParserError).status === 413
-  ) {
+  const parserStatus = bodyParserStatus(error);
+  if (parserStatus === 400) {
+    return ApiError.badRequest(
+      "Request body could not be read",
+      undefined,
+      "INVALID_REQUEST_BODY",
+    );
+  }
+
+  if (parserStatus === 413) {
     return new ApiError(413, "Request body is too large", {
       code: "REQUEST_BODY_TOO_LARGE",
+    });
+  }
+
+  if (parserStatus === 415) {
+    return new ApiError(415, "Request media type, charset, or encoding is unsupported", {
+      code: "UNSUPPORTED_REQUEST_BODY",
     });
   }
 
