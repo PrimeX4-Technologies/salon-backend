@@ -18,6 +18,9 @@ export interface INotification {
   nextAttemptAt?: Date;
   attempts: number;
   maxAttempts: number;
+  lockedAt?: Date;
+  lockedBy?: string;
+  lockExpiresAt?: Date;
   providerMessageId?: string;
   sentAt?: Date;
   lastError?: string;
@@ -50,6 +53,9 @@ const NotificationSchema = new Schema<INotification>(
     nextAttemptAt: Date,
     attempts: { type: Number, default: 0, min: 0 },
     maxAttempts: { type: Number, default: 5, min: 1, max: 20 },
+    lockedAt: Date,
+    lockedBy: { type: String, trim: true, maxlength: 200, select: false },
+    lockExpiresAt: Date,
     providerMessageId: { type: String, trim: true, maxlength: 255, select: false },
     sentAt: Date,
     lastError: { type: String, trim: true, maxlength: 2000, select: false },
@@ -58,9 +64,38 @@ const NotificationSchema = new Schema<INotification>(
 );
 
 NotificationSchema.index({ idempotencyKey: 1 }, { unique: true });
-NotificationSchema.index({ status: 1, scheduledAt: 1, nextAttemptAt: 1 });
+NotificationSchema.index({
+  status: 1,
+  scheduledAt: 1,
+  nextAttemptAt: 1,
+  lockExpiresAt: 1,
+});
 NotificationSchema.index({ recipientType: 1, recipientId: 1, createdAt: -1 });
 NotificationSchema.index({ bookingId: 1, topic: 1 });
+
+NotificationSchema.pre("validate", function () {
+  if (
+    this.status === "processing" &&
+    (!this.lockedAt || !this.lockedBy || !this.lockExpiresAt)
+  ) {
+    this.invalidate(
+      "lockExpiresAt",
+      "A processing notification requires a complete worker lease",
+    );
+  }
+  if (
+    this.lockedAt &&
+    this.lockExpiresAt &&
+    this.lockExpiresAt <= this.lockedAt
+  ) {
+    this.invalidate("lockExpiresAt", "Worker lease must expire after it starts");
+  }
+  if (this.status !== "processing") {
+    this.lockedAt = undefined;
+    this.lockedBy = undefined;
+    this.lockExpiresAt = undefined;
+  }
+});
 
 const Notification = getOrCreateModel<INotification>("Notification", NotificationSchema);
 

@@ -48,6 +48,7 @@ const WaitlistEntrySchema = new Schema<IWaitlistEntry>(
 WaitlistEntrySchema.index({ branchId: 1, status: 1, windowStartAt: 1, priority: -1 });
 WaitlistEntrySchema.index({ customerId: 1, status: 1 });
 WaitlistEntrySchema.index({ status: 1, offeredUntil: 1 });
+WaitlistEntrySchema.index({ status: 1, windowEndAt: 1 });
 
 WaitlistEntrySchema.pre("validate", function () {
   this.serviceIds = [

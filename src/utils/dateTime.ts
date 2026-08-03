@@ -1,3 +1,5 @@
+import { Temporal } from "@js-temporal/polyfill";
+
 import { config } from "../config/env.js";
 
 export const SYSTEM_TIME_ZONE = config.TIME_ZONE;
@@ -35,3 +37,28 @@ export const isDateWithExplicitOffset = (value: string): boolean =>
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(
     value,
   );
+
+export const localDateTimeToDate = (localDate: string, localTime: string): Date => {
+  const plainDate = Temporal.PlainDate.from(localDate);
+  const plainTime = Temporal.PlainTime.from(localTime);
+  const instant = plainDate
+    .toPlainDateTime(plainTime)
+    .toZonedDateTime(SYSTEM_TIME_ZONE)
+    .toInstant();
+  return new Date(instant.epochMilliseconds);
+};
+
+export const dateToSystemPlainDate = (value: Date): string =>
+  Temporal.Instant.fromEpochMilliseconds(value.getTime())
+    .toZonedDateTimeISO(SYSTEM_TIME_ZONE)
+    .toPlainDate()
+    .toString();
+
+export const systemDayOfWeek = (localDate: string): number =>
+  Temporal.PlainDate.from(localDate).dayOfWeek % 7;
+
+export const addLocalDays = (localDate: string, days: number): string =>
+  Temporal.PlainDate.from(localDate).add({ days }).toString();
+
+export const compareLocalDates = (left: string, right: string): number =>
+  Temporal.PlainDate.compare(Temporal.PlainDate.from(left), Temporal.PlainDate.from(right));

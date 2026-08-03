@@ -1,4 +1,4 @@
-import { Schema, type Types } from "mongoose";
+import { Schema } from "mongoose";
 
 import { getOrCreateModel } from "../core/shared.js";
 

@@ -6,7 +6,7 @@ import { getOrCreateModel } from "../core/shared.js";
 
 export interface IOutboxEvent {
   eventId: string;
-  aggregateType: "booking" | "booking_quote" | "waitlist" | "employee_schedule" | "time_off" | "booking_payment" | "catalog";
+  aggregateType: "booking" | "booking_quote" | "waitlist" | "employee_schedule" | "time_off" | "booking_payment" | "catalog" | "user";
   aggregateId: Types.ObjectId;
   eventType: string;
   payload: Record<string, unknown>;
@@ -27,7 +27,7 @@ const OutboxEventSchema = new Schema<IOutboxEvent>(
     eventId: { type: String, required: true, default: () => randomUUID(), immutable: true },
     aggregateType: {
       type: String,
-      enum: ["booking", "booking_quote", "waitlist", "employee_schedule", "time_off", "booking_payment", "catalog"],
+      enum: ["booking", "booking_quote", "waitlist", "employee_schedule", "time_off", "booking_payment", "catalog", "user"],
       required: true,
     },
     aggregateId: { type: Schema.Types.ObjectId, required: true },

@@ -21,6 +21,7 @@ export interface IIntegrationSyncJob {
   nextAttemptAt?: Date;
   lockedAt?: Date;
   lockedBy?: string;
+  lockExpiresAt?: Date;
   completedAt?: Date;
   lastError?: string;
   createdAt: Date;
@@ -48,6 +49,7 @@ const IntegrationSyncJobSchema = new Schema<IIntegrationSyncJob>(
     nextAttemptAt: Date,
     lockedAt: Date,
     lockedBy: { type: String, trim: true, maxlength: 200 },
+    lockExpiresAt: Date,
     completedAt: Date,
     lastError: { type: String, trim: true, maxlength: 4000, select: false },
   },
@@ -56,12 +58,38 @@ const IntegrationSyncJobSchema = new Schema<IIntegrationSyncJob>(
 
 IntegrationSyncJobSchema.index({ jobId: 1 }, { unique: true });
 IntegrationSyncJobSchema.index({ connectorId: 1, idempotencyKey: 1 }, { unique: true });
-IntegrationSyncJobSchema.index({ status: 1, nextAttemptAt: 1, createdAt: 1 });
+IntegrationSyncJobSchema.index({
+  status: 1,
+  nextAttemptAt: 1,
+  lockExpiresAt: 1,
+  createdAt: 1,
+});
 IntegrationSyncJobSchema.index({ connectorId: 1, entityType: 1, localId: 1, createdAt: -1 });
 
 IntegrationSyncJobSchema.pre("validate", function () {
   if (!this.localId && !this.externalId) {
     this.invalidate("localId", "A sync job requires a local ID or external ID");
+  }
+  if (
+    this.status === "processing" &&
+    (!this.lockedAt || !this.lockedBy || !this.lockExpiresAt)
+  ) {
+    this.invalidate(
+      "lockExpiresAt",
+      "A processing sync job requires a complete worker lease",
+    );
+  }
+  if (
+    this.lockedAt &&
+    this.lockExpiresAt &&
+    this.lockExpiresAt <= this.lockedAt
+  ) {
+    this.invalidate("lockExpiresAt", "Worker lease must expire after it starts");
+  }
+  if (this.status !== "processing") {
+    this.lockedAt = undefined;
+    this.lockedBy = undefined;
+    this.lockExpiresAt = undefined;
   }
 });
 

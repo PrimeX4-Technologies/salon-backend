@@ -84,6 +84,7 @@ interface IBookingEventDetails {
 export interface IBooking {
   branchId: Types.ObjectId;
   customerId: Types.ObjectId;
+  employeeIds: Types.ObjectId[];
   quoteId?: Types.ObjectId;
   packageId?: Types.ObjectId;
   packageSnapshot?: IPackageSnapshot;
@@ -97,6 +98,7 @@ export interface IBooking {
   pricingSnapshot: IBookingPricingSnapshot;
   externalSettlement: IExternalSettlementSummary;
   includedProductSnapshots: IIncludedProductSnapshot[];
+  reservationCountSnapshot: number;
   cancellationPolicySnapshot: ICancellationPolicySnapshot;
   event: IBookingEventDetails;
   customerNote?: string;
@@ -200,8 +202,26 @@ const BookingEventDetailsSchema = new Schema<IBookingEventDetails>(
     type: { type: String, enum: ["standard", "group", "wedding", "offsite"], default: "standard" },
     name: { type: String, trim: true, maxlength: 160 },
     partySize: { type: Number, default: 1, min: 1, max: 500 },
-    travelMinutesBefore: { type: Number, default: 0, min: 0, max: 1440 },
-    travelMinutesAfter: { type: Number, default: 0, min: 0, max: 1440 },
+    travelMinutesBefore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1440,
+      validate: {
+        validator: isNonNegativeInteger,
+        message: "Travel minutes must be a non-negative integer",
+      },
+    },
+    travelMinutesAfter: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 1440,
+      validate: {
+        validator: isNonNegativeInteger,
+        message: "Travel minutes must be a non-negative integer",
+      },
+    },
     offsiteAddress: { type: String, trim: true, maxlength: 1000 },
   },
   { _id: false },
@@ -211,6 +231,7 @@ const BookingSchema = new Schema<IBooking>(
   {
     branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
     customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
+    employeeIds: [{ type: Schema.Types.ObjectId, ref: "Employee", required: true }],
     quoteId: { type: Schema.Types.ObjectId, ref: "BookingQuote" },
     packageId: { type: Schema.Types.ObjectId, ref: "ServicePackage" },
     packageSnapshot: PackageSnapshotSchema,
@@ -233,6 +254,16 @@ const BookingSchema = new Schema<IBooking>(
     pricingSnapshot: { type: BookingPricingSnapshotSchema, required: true },
     externalSettlement: { type: ExternalSettlementSummarySchema, default: () => ({}) },
     includedProductSnapshots: { type: [IncludedProductSnapshotSchema], default: [] },
+    reservationCountSnapshot: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: "Reservation count snapshot must be an integer",
+      },
+    },
     cancellationPolicySnapshot: { type: CancellationPolicySnapshotSchema, required: true },
     event: { type: BookingEventDetailsSchema, default: () => ({}) },
     customerNote: { type: String, trim: true, maxlength: 2000 },
@@ -256,6 +287,8 @@ BookingSchema.index(
 );
 BookingSchema.index({ branchId: 1, status: 1, startAt: 1 });
 BookingSchema.index({ customerId: 1, startAt: -1 });
+BookingSchema.index({ branchId: 1, customerId: 1, startAt: -1 });
+BookingSchema.index({ employeeIds: 1, status: 1, startAt: 1 });
 BookingSchema.index({ status: 1, expiresAt: 1 });
 BookingSchema.index(
   { quoteId: 1 },
@@ -263,6 +296,12 @@ BookingSchema.index(
 );
 
 BookingSchema.pre("validate", function () {
+  this.employeeIds = [
+    ...new Map((this.employeeIds ?? []).map((id) => [id.toString(), id])).values(),
+  ];
+  if (this.employeeIds.length === 0) {
+    this.invalidate("employeeIds", "A booking requires at least one employee");
+  }
   if (this.endAt <= this.startAt) this.invalidate("endAt", "Booking must end after it starts");
   if (!this.pricingSnapshot || !this.event || !this.externalSettlement) {
     if (!this.pricingSnapshot) this.invalidate("pricingSnapshot", "Pricing snapshot is required");
@@ -325,6 +364,15 @@ BookingSchema.pre("validate", function () {
   }
   if (this.event.type === "offsite" && !this.event.offsiteAddress) {
     this.invalidate("event.offsiteAddress", "An off-site booking requires an address");
+  }
+  if (
+    this.event.type !== "offsite" &&
+    (this.event.travelMinutesBefore > 0 || this.event.travelMinutesAfter > 0)
+  ) {
+    this.invalidate(
+      "event.travelMinutesBefore",
+      "Travel buffers are supported only for off-site bookings",
+    );
   }
   if (this.externalSettlement.status === "settled_external" && !this.externalSettlement.settledAt) {
     this.invalidate("externalSettlement.settledAt", "Settled status requires settledAt");

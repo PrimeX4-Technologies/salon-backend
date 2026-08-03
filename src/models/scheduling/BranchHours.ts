@@ -66,6 +66,9 @@ BranchHoursSchema.pre("validate", function () {
   if (new Set(dayNumbers).size !== dayNumbers.length) {
     this.invalidate("days", "Each weekday can appear only once");
   }
+  if (this.days.length !== 7 || new Set(dayNumbers).size !== 7) {
+    this.invalidate("days", "Branch hours must contain all seven weekdays");
+  }
 
   this.days.forEach((day, index) => {
     day.intervals = day.intervals ?? [];

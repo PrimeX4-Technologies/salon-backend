@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 
+import "./providers/index.js";
 import app from "./app.js";
 import { connectDB, disconnectDB } from "./config/database.js";
 import { config } from "./config/env.js";
@@ -46,9 +47,9 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
 const start = async (): Promise<void> => {
   try {
     const connectionResults = await Promise.allSettled([connectDB(), redisService.connect()]);
-    const connectionErrors = connectionResults
+    const connectionErrors: unknown[] = connectionResults
       .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result) => result.reason);
+      .map((result) => result.reason as unknown);
 
     if (connectionErrors.length > 0) {
       throw new AggregateError(connectionErrors, "One or more infrastructure connections failed");
