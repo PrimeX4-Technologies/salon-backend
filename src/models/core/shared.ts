@@ -17,7 +17,14 @@ export const normalizeEmail = (value?: string | null): string | undefined => {
 
 export const normalizePhone = (value?: string | null): string | undefined => {
   const normalized = value?.trim().replace(/[\s().-]/g, "");
-  return normalized || undefined;
+  if (!normalized) return undefined;
+
+  // This installation uses Sri Lanka as its default numbering region. Store
+  // one canonical E.164 value while accepting the formats customers normally
+  // type into a local form.
+  if (/^0\d{9}$/.test(normalized)) return `+94${normalized.slice(1)}`;
+  if (/^94\d{9}$/.test(normalized)) return `+${normalized}`;
+  return normalized;
 };
 
 export const normalizeCode = (value: string): string => value.trim().toUpperCase();

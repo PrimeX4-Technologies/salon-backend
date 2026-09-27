@@ -2,6 +2,15 @@ import { z } from "zod";
 
 import { emailSchema, e164PhoneSchema } from "./common.schemas.js";
 
+const loginPasswordSchema = z
+  .string()
+  .min(1, "Password is required")
+  .max(200)
+  .refine(
+    (value) => Buffer.byteLength(value, "utf8") <= 72,
+    "Password cannot exceed 72 UTF-8 bytes",
+  );
+
 const passwordSchema = z
   .string()
   .min(8, "Password must contain at least 8 characters")
@@ -11,10 +20,7 @@ const passwordSchema = z
     "Password cannot exceed 72 UTF-8 bytes",
   );
 
-export const newPasswordSchema = passwordSchema
-  .refine((value) => /[a-z]/.test(value), "Password must contain a lowercase letter")
-  .refine((value) => /[A-Z]/.test(value), "Password must contain an uppercase letter")
-  .refine((value) => /\d/.test(value), "Password must contain a number");
+export const newPasswordSchema = passwordSchema;
 
 export const customerRegistrationSchema = z
   .object({
@@ -25,14 +31,14 @@ export const customerRegistrationSchema = z
   })
   .strict()
   .refine((value) => value.email || value.phone, {
-    message: "An email address or E.164 mobile number is required",
+    message: "An email address or mobile number is required",
     path: ["email"],
   });
 
 export const loginSchema = z
   .object({
     identifier: z.string().trim().min(3).max(254),
-    password: passwordSchema,
+    password: loginPasswordSchema,
   })
   .strict();
 
@@ -51,7 +57,7 @@ export const refreshTokenSchema = z
 
 export const changePasswordSchema = z
   .object({
-    currentPassword: passwordSchema.optional(),
+    currentPassword: loginPasswordSchema.optional(),
     newPassword: newPasswordSchema,
   })
   .strict()

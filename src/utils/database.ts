@@ -19,7 +19,7 @@ const transactionIsUnsupported = (error: unknown): boolean => {
     candidate.codeName === "IllegalOperation" ||
     candidate.message?.includes(
       "Transaction numbers are only allowed on a replica set member",
-    ) === true
+    ) === true || candidate.message?.includes("does not support retryable writes") === true
   );
 };
 

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { normalizePhone } from "../models/core/shared.js";
+
 export const objectIdSchema = z
   .string()
   .trim()
@@ -21,7 +23,18 @@ export const instantSchema = z
 export const e164PhoneSchema = z
   .string()
   .trim()
-  .regex(/^\+[1-9]\d{7,14}$/, "Must use E.164 format, for example +94771234567");
+  .transform((value) => normalizePhone(value) ?? "")
+  .pipe(
+    z.string().regex(
+      /^\+[1-9]\d{7,14}$/,
+      "Enter a valid mobile number, for example 0771234567 or +94771234567",
+    ),
+  )
+  .meta({
+    description:
+      "Mobile number. Sri Lankan local form is accepted and stored as E.164.",
+    examples: ["0771234567", "+94771234567"],
+  });
 
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 

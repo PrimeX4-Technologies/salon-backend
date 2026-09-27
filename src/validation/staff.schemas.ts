@@ -55,7 +55,7 @@ export const localStaffAccountSchema = z
   })
   .strict()
   .refine((value) => Boolean(value.email || value.phone), {
-    message: "An email address or E.164 mobile number is required",
+    message: "An email address or mobile number is required",
     path: ["email"],
   });
 
