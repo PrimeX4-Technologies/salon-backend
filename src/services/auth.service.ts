@@ -164,9 +164,7 @@ const transactionIsUnsupported = (error: unknown): boolean => {
     Boolean(
       candidate.message?.includes(
         "Transaction numbers are only allowed on a replica set member",
-      ) ||
-        candidate.message?.includes("does not support retryable writes") ||
-        candidate.message?.includes("Transactions are not supported"),
+      ) || candidate.message?.includes("does not support retryable writes"),
     )
   );
 };

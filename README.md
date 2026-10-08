@@ -248,7 +248,7 @@ Start from [.env.example](.env.example). Configuration is parsed at process star
 | `PORT` | HTTP listen port | `5000` |
 | `MONGO_URI` | MongoDB connection URI | required |
 | `REDIS_URL` | Redis connection URI | required |
-| `CORS_ORIGIN` | Comma-separated trusted browser origins | `http://localhost:3000` |
+| `CORS_ORIGIN` | Comma-separated trusted browser origins | `http://localhost:5173` |
 | `TRUST_PROXY` | Trust the first reverse proxy for IP/protocol | `false` |
 | `REQUEST_BODY_LIMIT` | JSON, form, and webhook body limit | `100kb` |
 | `SHUTDOWN_TIMEOUT_MS` | Maximum graceful shutdown period | `10000` |
@@ -292,7 +292,7 @@ In production, all three auth secrets must be distinct. `AUTH_COOKIE_SAME_SITE=n
 |---|---|
 | `BOOTSTRAP_ADMIN_NAME` | Initial administrator's display name |
 | `BOOTSTRAP_ADMIN_EMAIL` | Initial administrator's email |
-| `BOOTSTRAP_ADMIN_PHONE` | Optional E.164 mobile number |
+| `BOOTSTRAP_ADMIN_PHONE` | Optional mobile number; Sri Lankan local or E.164 format |
 | `BOOTSTRAP_ADMIN_PASSWORD` | One-time local password; remove after bootstrap |
 
 Concrete payment, messaging, event-bus, and ERP adapter credentials are deployment-specific and are not parsed by the core. Load them from the deployment environment or secret manager in the adapter module. Integration connector records store a secret **reference**, never the secret value.
@@ -343,14 +343,14 @@ Use either one `all` worker process or independently scaled worker kinds. Runnin
 
 `Customer` and `Employee` are domain profiles, not alternative credential stores.
 
-- Customers may register/login with email or E.164 mobile plus password.
+- Customers may register/login with email or mobile plus password. Sri Lankan numbers may be entered locally (`0771234567`) or in E.164 form (`+94771234567`).
 - Customers may also sign in with a Google ID token when enabled in business settings and `GOOGLE_CLIENT_ID` is configured.
 - Google sign-in verifies the configured audience and a verified Google email and always creates/links a customer role.
 - Employees and admins use local email/mobile plus password only.
 - There is no public employee/admin signup. Admin APIs create admins and employee profiles and provision employee accounts.
 - Walk-in or externally synchronized customers may exist without a `User` login.
 
-Passwords are bcrypt-hashed with cost 12 and limited to 72 UTF-8 bytes. New customer/reset passwords require at least eight characters, a lowercase letter, an uppercase letter, and a number. Repeated failed local logins temporarily lock the account.
+Passwords are bcrypt-hashed with cost 12 and limited to 72 UTF-8 bytes. New customer/reset passwords require at least eight characters without composition rules. Login accepts an existing non-empty password without reapplying registration policy. Repeated failed local logins temporarily lock the account.
 
 ### Access and refresh sessions
 
@@ -571,7 +571,7 @@ Every request receives `X-Request-Id`; a safe caller-supplied value is preserved
 - JSON schemas are strict: unknown keys are rejected.
 - Keys containing MongoDB operators/path syntax and prototype-pollution keys are rejected recursively.
 - IDs are MongoDB ObjectId strings unless otherwise documented.
-- Phones use E.164, such as `+94771234567`.
+- Phones are stored in E.164 form. Inputs accept E.164 or Sri Lankan local form, such as `+94771234567` or `0771234567`.
 - Instants require ISO 8601 with `Z` or an explicit offset.
 - Local dates use `YYYY-MM-DD`; wall-clock hours use `HH:mm`.
 - Auth responses are `no-store`.

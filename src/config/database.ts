@@ -12,6 +12,10 @@ export const connectDB = async (): Promise<void> => {
     maxPoolSize: 20,
     minPoolSize: config.NODE_ENV === "production" ? 2 : 0,
     serverSelectionTimeoutMS: 5_000,
+    // Supports standalone/local MongoDB and Mongo-compatible deployments that
+    // reject retryable writes. Domain-level idempotency still protects booking
+    // and payment commands.
+    retryWrites: false,
   });
 
   if (config.NODE_ENV === "production") {
