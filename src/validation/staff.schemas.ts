@@ -163,13 +163,7 @@ export const createEmployeeBodySchema = z
         message: "Access can be created only when an account is supplied",
       });
     }
-    if (value.status === "active" && !value.account) {
-      context.addIssue({
-        code: "custom",
-        path: ["account"],
-        message: "An active employee requires a local-login account",
-      });
-    }
+
     if (
       value.access?.status === "active" &&
       value.status !== "active" &&
@@ -219,6 +213,8 @@ export const updateEmployeeBodySchema = z
 
 export const updateMyEmployeeProfileBodySchema = z
   .object({
+    email: emailSchema.nullish(),
+    phone: e164PhoneSchema.nullish(),
     bio: z.string().trim().max(2000).nullish(),
     avatarUrl: z.string().trim().url().max(2048).nullish(),
     calendarColor: employeeProfileFields.calendarColor.optional(),

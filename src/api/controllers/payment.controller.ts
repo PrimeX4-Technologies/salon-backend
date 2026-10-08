@@ -1,5 +1,6 @@
 import type { Request } from "express";
 
+import BookingPayment from "../../models/payments/BookingPayment.js";
 import {
   ingestPaymentWebhook,
   paymentService,
@@ -129,6 +130,12 @@ export const listPaymentWebhookEvents = catchAsync(async (req, res) => {
   sendPaginated(res, result.items, result.pagination);
 });
 
+export const deleteStaffPayment = catchAsync(async (req, res) => {
+  const paymentId = getValidatedParam(req, "paymentId");
+  await BookingPayment.findByIdAndUpdate(paymentId, { status: "cancelled" });
+  sendSuccess(res, { deleted: true });
+});
+
 export const retryPaymentWebhookEvent = catchAsync(async (req, res) => {
   sendSuccess(
     res,
@@ -138,3 +145,4 @@ export const retryPaymentWebhookEvent = catchAsync(async (req, res) => {
     ),
   );
 });
+

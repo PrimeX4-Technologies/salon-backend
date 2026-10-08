@@ -29,8 +29,8 @@ export interface IBookingPayment {
 const BookingPaymentSchema = new Schema<IBookingPayment>(
   {
     branchId: { type: Schema.Types.ObjectId, ref: "Branch", required: true },
-    bookingId: { type: Schema.Types.ObjectId, ref: "Booking", required: true },
-    customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
+    bookingId: { type: Schema.Types.ObjectId, ref: "Booking", required: false },
+    customerId: { type: Schema.Types.ObjectId, ref: "Customer", required: false },
     purpose: {
       type: String,
       enum: ["advance", "advance_refund", "cancellation_fee", "no_show_fee"],

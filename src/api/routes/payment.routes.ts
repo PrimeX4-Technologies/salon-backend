@@ -10,6 +10,7 @@ import {
   receivePaymentWebhook,
   recordAdvance,
   recordAdvanceRefund,
+  deleteStaffPayment,
   retryPaymentWebhookEvent,
 } from "../controllers/payment.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
@@ -93,6 +94,12 @@ staffPaymentRouter.get(
   requirePermissions("view_booking_payments"),
   validate({ params: paymentIdParamsSchema }),
   getStaffPayment,
+);
+staffPaymentRouter.delete(
+  "/:paymentId",
+  requirePermissions("view_booking_payments", "manage_bookings"),
+  validate({ params: paymentIdParamsSchema }),
+  deleteStaffPayment,
 );
 
 export const paymentWebhookRouter = Router();

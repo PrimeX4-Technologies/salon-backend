@@ -114,7 +114,7 @@ export const cancelBooking = catchAsync(async (req, res) => {
     res,
     await bookingService.cancel(
       getValidatedParam(req, "bookingId"),
-      req.body as CancelBookingBody,
+      (req.body ?? {}) as CancelBookingBody,
       requestContext(req, res),
     ),
   );
@@ -243,6 +243,17 @@ export const getInquiry = catchAsync(async (req, res) => {
   );
 });
 
+export const updateInquiry = catchAsync(async (req, res) => {
+  sendSuccess(
+    res,
+    await inquiryService.update(
+      getValidatedParam(req, "inquiryId"),
+      req.body as any,
+      requestContext(req, res),
+    ),
+  );
+});
+
 export const cancelInquiry = catchAsync(async (req, res) => {
   sendSuccess(
     res,
@@ -347,6 +358,26 @@ export const scheduleAcceptedQuote = catchAsync(async (req, res) => {
   sendCreated(res, result);
 });
 
+export const deleteInquiry = catchAsync(async (req, res) => {
+  sendSuccess(
+    res,
+    await inquiryService.remove(
+      getValidatedParam(req, "inquiryId"),
+      requestContext(req, res),
+    ),
+  );
+});
+
+export const deleteQuote = catchAsync(async (req, res) => {
+  sendSuccess(
+    res,
+    await inquiryService.removeQuote(
+      getValidatedParam(req, "quoteId"),
+      requestContext(req, res),
+    ),
+  );
+});
+
 export const bookingController = {
   createBooking,
   listBookings,
@@ -367,6 +398,7 @@ export const bookingController = {
   createInquiry,
   listInquiries,
   getInquiry,
+  updateInquiry,
   cancelInquiry,
   reviewInquiry,
   rejectInquiry,
@@ -377,4 +409,6 @@ export const bookingController = {
   acceptQuote,
   rejectQuote,
   scheduleAcceptedQuote,
+  deleteInquiry,
+  deleteQuote,
 };

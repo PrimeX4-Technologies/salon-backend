@@ -245,11 +245,12 @@ export const inquiryIdParamsSchema = z
 
 export const createInquiryBodySchema = z
   .object({
+    customerId: objectIdSchema.optional(),
     branchId: objectIdSchema.optional(),
     packageId: objectIdSchema.optional(),
     serviceIds: z.array(objectIdSchema).max(50).optional().default([]),
     productIds: z.array(objectIdSchema).max(50).optional().default([]),
-    type: z.enum(["service", "product", "package", "wedding", "event"]),
+    type: z.enum(["service", "product", "package", "wedding", "event", "general"]).default("package"),
     preferredDateFrom: localDateSchema.optional(),
     preferredDateTo: localDateSchema.optional(),
     partySize: z.number().int().min(1).max(500).optional().default(1),
@@ -259,20 +260,6 @@ export const createInquiryBodySchema = z
   })
   .strict()
   .superRefine((body, context) => {
-    if (!body.packageId && body.serviceIds.length === 0 && body.productIds.length === 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["serviceIds"],
-        message: "Select at least one package, service, or product",
-      });
-    }
-    if (body.type !== "product" && !body.preferredDateFrom) {
-      context.addIssue({
-        code: "custom",
-        path: ["preferredDateFrom"],
-        message: "A preferred date is required",
-      });
-    }
     if (
       body.preferredDateFrom &&
       body.preferredDateTo &&
@@ -354,7 +341,7 @@ const quoteLineSchema = z
 
 export const createQuoteBodySchema = z
   .object({
-    branchId: objectIdSchema,
+    branchId: objectIdSchema.optional(),
     validUntil: instantSchema,
     proposedStartAt: instantSchema.optional().nullable(),
     proposedEndAt: instantSchema.optional().nullable(),

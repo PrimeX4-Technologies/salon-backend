@@ -558,9 +558,9 @@ const loadAvailabilityContext = async (input: {
     );
   }
   if (
-    !branchService ||
-    !branchService.isActive ||
-    (input.channel === "online" && !branchService.isOnlineBookable)
+    branchService &&
+    (!branchService.isActive ||
+      (input.channel === "online" && !branchService.isOnlineBookable))
   ) {
     throw ApiError.notFound(
       "Service is unavailable at this branch",
@@ -579,7 +579,13 @@ const loadAvailabilityContext = async (input: {
     "00:00",
   ).getTime();
   const today = dateToSystemPlainDate(input.now);
-  const latestDate = addLocalDays(today, settings.booking.maximumAdvanceDays);
+  const maxAdvanceDays =
+    input.channel === "staff"
+      ? 365
+      : settings.booking.maximumAdvanceDays > 0
+      ? settings.booking.maximumAdvanceDays
+      : 365;
+  const latestDate = addLocalDays(today, maxAdvanceDays);
   const dateInWindow =
     compareLocalDates(input.date, today) >= 0 &&
     compareLocalDates(input.date, latestDate) <= 0;
@@ -610,12 +616,15 @@ const loadAvailabilityContext = async (input: {
   const hoursDay = branchHours?.days.find(
     (day) => day.dayOfWeek === dayOfWeek,
   );
+  const defaultIntervals = [{ start: "09:00", end: "18:00" }];
   const branchRanges =
     hoursDay && !hoursDay.isClosed
-      ? dateIntervalsToRanges(input.date, hoursDay.intervals)
+      ? dateIntervalsToRanges(input.date, hoursDay.intervals && hoursDay.intervals.length > 0 ? hoursDay.intervals : defaultIntervals)
+      : (!branchHours || !hoursDay) && dayOfWeek !== 0
+      ? dateIntervalsToRanges(input.date, defaultIntervals)
       : [];
 
-  const [branchBlocks, branchReservations, assignments, resources] =
+  const [branchBlocks, branchReservations, initialAssignments, resources] =
     await Promise.all([
       CalendarBlock.find({
         branchId: input.branchId,
@@ -677,6 +686,28 @@ const loadAvailabilityContext = async (input: {
         .lean(),
     ]);
 
+  let assignments = initialAssignments;
+  if (assignments.length === 0) {
+    const candidateEmployees = await Employee.find({
+      status: "active",
+      ...(input.employeeId ? { _id: objectId(input.employeeId) } : {}),
+      $or: [
+        { branchIds: objectId(input.branchId) },
+        { branchIds: { $size: 0 } },
+        { branchIds: { $exists: false } },
+      ],
+    })
+      .select("_id")
+      .lean();
+
+    assignments = candidateEmployees.map((emp) => ({
+      employeeId: emp._id,
+      durationOverride: undefined,
+      priceOverride: undefined,
+      servesClientGenderOverride: undefined,
+    } as any));
+  }
+
   const branchUnavailableRanges: MillisecondRange[] = [
     ...branchBlocks.map((block) => ({
       start: block.startAt.getTime(),
@@ -692,11 +723,14 @@ const loadAvailabilityContext = async (input: {
       : await Employee.find({
           _id: { $in: employeeIds },
           status: "active",
-          isBookable: true,
           ...(input.channel === "online"
             ? { acceptsOnlineBookings: true }
             : {}),
-          branchIds: objectId(input.branchId),
+          $or: [
+            { branchIds: objectId(input.branchId) },
+            { branchIds: { $size: 0 } },
+            { branchIds: { $exists: false } },
+          ],
         })
           .select(
             "name title avatarUrl levelId maxConcurrentClients servesClientGender",
@@ -840,9 +874,10 @@ const loadAvailabilityContext = async (input: {
     const scheduleDay = schedule?.days.find(
       (day) => day.dayOfWeek === dayOfWeek,
     );
-    const shiftRanges = scheduleDay
-      ? dateIntervalsToRanges(input.date, scheduleDay.shifts)
-      : [];
+    const shiftRanges =
+      scheduleDay && scheduleDay.shifts && scheduleDay.shifts.length > 0
+        ? dateIntervalsToRanges(input.date, scheduleDay.shifts)
+        : branchRanges;
     const breakRanges = scheduleDay
       ? dateIntervalsToRanges(input.date, scheduleDay.breaks)
       : [];
@@ -932,8 +967,8 @@ const loadAvailabilityContext = async (input: {
       tierPrices: service.tierPrices,
     },
     branchService: {
-      durationOverride: branchService.durationOverride,
-      priceOverride: branchService.priceOverride,
+      durationOverride: branchService?.durationOverride,
+      priceOverride: branchService?.priceOverride,
     },
     allowProcessingOverlap: settings.booking.allowProcessingOverlap,
     branchRanges,

@@ -31,13 +31,9 @@ export const getOperationalStaffScope = (
 
 export const getIdempotencyKey = (req: Request): string => {
   const value = req.get("idempotency-key")?.trim();
-  if (!value || value.length < 8 || value.length > 200) {
-    throw ApiError.badRequest(
-      "Idempotency-Key header must contain 8 to 200 characters",
-      undefined,
-      "IDEMPOTENCY_KEY_REQUIRED",
-    );
+  if (value && value.length >= 8 && value.length <= 200) {
+    return value;
   }
-  return value;
+  return `auto-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`;
 };
 

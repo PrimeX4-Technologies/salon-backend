@@ -29,6 +29,8 @@ export const customerRegistrationSchema = z
     path: ["email"],
   });
 
+export const employeeRegistrationSchema = customerRegistrationSchema;
+
 export const loginSchema = z
   .object({
     identifier: z.string().trim().min(3).max(254),
@@ -87,6 +89,7 @@ export const sessionParamSchema = z.object({
 });
 
 export type CustomerRegistrationInput = z.infer<typeof customerRegistrationSchema>;
+export type EmployeeRegistrationInput = z.infer<typeof employeeRegistrationSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

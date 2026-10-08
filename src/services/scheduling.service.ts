@@ -1378,6 +1378,7 @@ export const deactivateBookableResource = (
   context: AuditActorContext,
 ) =>
   withBookingConfigWriteLease(branchId, async () => {
+    let deletedDoc: any = null;
     await withTransaction(async (session) => {
       const resource = await BookableResource.findOne({
         _id: resourceId,
@@ -1389,20 +1390,19 @@ export const deactivateBookableResource = (
           "BOOKABLE_RESOURCE_NOT_FOUND",
         );
       }
-      if (!resource.isActive) return;
-      resource.isActive = false;
-      await resource.save({ session });
+      deletedDoc = resource.toObject ? resource.toObject() : resource;
+      await BookableResource.deleteOne({ _id: resourceId, branchId }).session(session);
       await recordAudit(
         {
           context,
-          action: "bookable_resource.deactivated",
+          action: "bookable_resource.deleted",
           entityType: "BookableResource",
           entityId: resource._id,
         },
         session,
       );
     });
-    return getBookableResource(branchId, resourceId);
+    return deletedDoc;
   });
 
 export const schedulingService = {

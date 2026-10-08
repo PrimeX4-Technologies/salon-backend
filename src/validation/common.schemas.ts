@@ -21,7 +21,15 @@ export const instantSchema = z
 export const e164PhoneSchema = z
   .string()
   .trim()
-  .regex(/^\+[1-9]\d{7,14}$/, "Must use E.164 format, for example +94771234567");
+  .transform((val) => {
+    if (/^0\d{9}$/.test(val)) {
+      return `+94${val.slice(1)}`;
+    }
+    return val;
+  })
+  .pipe(
+    z.string().regex(/^\+[1-9]\d{7,14}$/, "Must be a valid phone number, for example 0771234567 or +94771234567")
+  );
 
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 

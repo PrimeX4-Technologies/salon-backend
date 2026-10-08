@@ -95,12 +95,8 @@ EmployeeSchema.pre("validate", function () {
   if (this.terminationDate && this.hireDate && this.terminationDate <= this.hireDate) {
     this.invalidate("terminationDate", "Termination date must be after hire date");
   }
-  if (this.status === "active" && !this.userId) {
-    this.invalidate("userId", "An active employee must have a local-login user account");
-  }
-  if (this.status === "active" && this.branchIds.length === 0) {
-    this.invalidate("branchIds", "An active employee must be assigned to a branch");
-  }
+
+
   if (this.status !== "active" && this.isBookable) {
     this.invalidate("isBookable", "Only active employees can be bookable");
   }

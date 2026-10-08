@@ -1,6 +1,6 @@
 import { Types, type ClientSession } from "mongoose";
 
-import type { IEmployee } from "../models/staff/Employee.js";
+import Employee, { type IEmployee } from "../models/staff/Employee.js";
 import {
   employeeRepository,
 } from "../repositories/employee.repository.js";
@@ -512,6 +512,21 @@ class EmployeeService {
       );
     }
 
+    const account =
+      input.email !== undefined || input.phone !== undefined
+        ? await employeeRepository.findPublicUserById(toObjectId(userId))
+        : null;
+    if ((input.email !== undefined || input.phone !== undefined) && !account) {
+      throw ApiError.notFound("Employee account was not found", "EMPLOYEE_ACCOUNT_NOT_FOUND");
+    }
+    if (input.email !== undefined && account) {
+      account.email = optionalString(input.email);
+      employee.workEmail = optionalString(input.email);
+    }
+    if (input.phone !== undefined && account) {
+      account.phone = optionalString(input.phone);
+      employee.workPhone = optionalString(input.phone);
+    }
     if (input.bio !== undefined) employee.bio = optionalString(input.bio);
     if (input.avatarUrl !== undefined) {
       employee.avatarUrl = optionalString(input.avatarUrl);
@@ -519,7 +534,7 @@ class EmployeeService {
     if (input.calendarColor !== undefined) {
       employee.calendarColor = input.calendarColor;
     }
-    await employee.save();
+    await Promise.all([employee.save(), account?.save()]);
     await recordAudit({
       context,
       action: "employee.profile.updated",
@@ -643,16 +658,7 @@ class EmployeeService {
             );
           }
           assertEmployeeManagementScope(scope, employee.branchIds);
-          employee.status = "terminated";
-          employee.isBookable = false;
-          employee.acceptsOnlineBookings = false;
-          if (
-            !employee.terminationDate &&
-            (!employee.hireDate || employee.hireDate < currentSystemDate())
-          ) {
-            employee.terminationDate = currentSystemDate();
-          }
-          await employee.save({ session });
+          await Employee.deleteOne({ _id: id }).session(session);
           if (employee.userId) {
             await this.applyAccountStatusForEmployee(
               employee.userId,

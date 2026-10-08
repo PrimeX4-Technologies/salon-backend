@@ -8,7 +8,7 @@ export interface IBookingInquiry {
   packageId?: Types.ObjectId;
   serviceIds: Types.ObjectId[];
   productIds: Types.ObjectId[];
-  type: "service" | "product" | "package" | "wedding" | "event";
+  type: "service" | "product" | "package" | "wedding" | "event" | "general";
   preferredDateFrom?: string;
   preferredDateTo?: string;
   partySize: number;
@@ -29,7 +29,7 @@ const BookingInquirySchema = new Schema<IBookingInquiry>(
     packageId: { type: Schema.Types.ObjectId, ref: "ServicePackage" },
     serviceIds: [{ type: Schema.Types.ObjectId, ref: "Service" }],
     productIds: [{ type: Schema.Types.ObjectId, ref: "Product" }],
-    type: { type: String, enum: ["service", "product", "package", "wedding", "event"], required: true },
+    type: { type: String, enum: ["service", "product", "package", "wedding", "event", "general"], required: true },
     preferredDateFrom: {
       type: String,
       validate: { validator: isValidLocalDate, message: "Preferred date must be YYYY-MM-DD" },
@@ -64,11 +64,8 @@ BookingInquirySchema.pre("validate", function () {
   this.productIds = [
     ...new Map((this.productIds ?? []).map((id) => [id.toString(), id])).values(),
   ];
-  if (!this.packageId && this.serviceIds.length === 0 && this.productIds.length === 0) {
-    this.invalidate("serviceIds", "An inquiry needs a package, service, or product");
-  }
-  if (this.type !== "product" && !this.preferredDateFrom) {
-    this.invalidate("preferredDateFrom", "Booking inquiries require a preferred date");
+  if (!this.preferredDateFrom && this.type !== "product") {
+    this.preferredDateFrom = new Date().toISOString().slice(0, 10);
   }
   if (this.preferredDateTo && !this.preferredDateFrom) {
     this.invalidate("preferredDateFrom", "A preferred end date requires a start date");

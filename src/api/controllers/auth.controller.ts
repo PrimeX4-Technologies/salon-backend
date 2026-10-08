@@ -187,6 +187,14 @@ export const registerCustomer = catchAsync(async (req, res) => {
   sendAuthResult(res, 201, result);
 });
 
+export const registerEmployee = catchAsync(async (req, res) => {
+  const result = await authService.registerEmployee(
+    req.body as CustomerRegistrationInput,
+    getSessionContext(req),
+  );
+  sendAuthResult(res, 201, result);
+});
+
 export const login = catchAsync(async (req, res) => {
   const result = await authService.login(
     req.body as LoginInput,

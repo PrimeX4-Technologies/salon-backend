@@ -166,14 +166,39 @@ export const updateBusinessProfile = async (
 };
 
 export const getBusinessSettings = async () => {
-  const settings = await BusinessSettings.findOne({ singletonKey: BUSINESS_SINGLETON_KEY })
+  let settings = await BusinessSettings.findOne({ singletonKey: BUSINESS_SINGLETON_KEY })
     .select("-__v")
     .lean();
   if (!settings) {
-    throw ApiError.notFound(
-      "Business settings have not been configured",
-      "SETTINGS_NOT_CONFIGURED",
-    );
+    let primaryBranch = await Branch.findOne({ isPrimary: true }) || await Branch.findOne({});
+    if (!primaryBranch) {
+      primaryBranch = await Branch.create({
+        code: "MAIN",
+        name: "Main Salon",
+        isPrimary: true,
+        isActive: true,
+        bookingsEnabled: true,
+      });
+    }
+    const created = await BusinessSettings.create({
+      singletonKey: BUSINESS_SINGLETON_KEY,
+      branchMode: "single",
+      locale: "en-US",
+      currency: "LKR",
+      finalPaymentHandling: "at_salon",
+      primaryBranchId: primaryBranch._id,
+      booking: {
+        slotIntervalMinutes: 15,
+        minimumNoticeMinutes: 60,
+        maximumAdvanceDays: 90,
+        temporaryHoldMinutes: 10,
+        cancellationWindowHours: 24,
+        allowWalkIns: true,
+        allowWaitlist: true,
+        requireCustomerPhone: true,
+      },
+    });
+    settings = created.toObject() as any;
   }
   return settings;
 };
@@ -193,14 +218,26 @@ export const updateBusinessSettings = async (
           }).session(session)) ??
           new BusinessSettings({ singletonKey: BUSINESS_SINGLETON_KEY });
 
-        const primaryBranchId =
+        let primaryBranchId =
           input.primaryBranchId ?? settings.primaryBranchId?.toString();
         if (!primaryBranchId) {
-          throw ApiError.badRequest(
-            "primaryBranchId is required when creating business settings",
-            undefined,
-            "PRIMARY_BRANCH_REQUIRED",
-          );
+          let primaryBranch = await Branch.findOne({ isPrimary: true }).session(session) || await Branch.findOne({}).session(session);
+          if (!primaryBranch) {
+            const [createdBranch] = await Branch.create(
+              [
+                {
+                  code: "MAIN",
+                  name: "Main Salon",
+                  isPrimary: true,
+                  isActive: true,
+                  bookingsEnabled: true,
+                },
+              ],
+              { session },
+            );
+            primaryBranch = createdBranch;
+          }
+          primaryBranchId = primaryBranch._id.toString();
         }
 
         const primaryBranch = await requireBranch(primaryBranchId, session);
@@ -345,6 +382,16 @@ export const getBusinessOverview = async () => {
 export const listBranches = async (
   query: BranchListQuery,
 ): Promise<ListResult<unknown>> => {
+  const countAll = await Branch.countDocuments({});
+  if (countAll === 0) {
+    await Branch.create({
+      code: "MAIN",
+      name: "Main Salon",
+      isPrimary: true,
+      isActive: true,
+      bookingsEnabled: true,
+    });
+  }
   const pagination = parsePagination(query as Record<string, unknown>);
   const filter: QueryFilter<IBranch> = {};
   if (query.branchIds) filter._id = { $in: query.branchIds };

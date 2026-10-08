@@ -12,6 +12,7 @@ import {
   logoutAll,
   refresh,
   registerCustomer,
+  registerEmployee,
   requestEmailVerification,
   resetPassword,
   revokeSession,
@@ -47,6 +48,12 @@ router.post(
   authRateLimiter,
   validate({ body: customerRegistrationSchema }),
   registerCustomer,
+);
+router.post(
+  "/register/employee",
+  authRateLimiter,
+  validate({ body: customerRegistrationSchema }),
+  registerEmployee,
 );
 router.post(
   "/login",

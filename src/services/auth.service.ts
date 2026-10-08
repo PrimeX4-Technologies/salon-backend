@@ -9,6 +9,9 @@ import User, {
   type UserRole,
 } from "../models/auth/User.js";
 import Customer from "../models/customers/Customer.js";
+import Employee from "../models/staff/Employee.js";
+import StaffAccess from "../models/access/StaffAccess.js";
+import { randomUUID } from "node:crypto";
 import OutboxEvent from "../models/events/OutboxEvent.js";
 import { normalizeEmail, normalizePhone } from "../models/core/shared.js";
 import type {
@@ -161,7 +164,9 @@ const transactionIsUnsupported = (error: unknown): boolean => {
     Boolean(
       candidate.message?.includes(
         "Transaction numbers are only allowed on a replica set member",
-      ),
+      ) ||
+        candidate.message?.includes("does not support retryable writes") ||
+        candidate.message?.includes("Transactions are not supported"),
     )
   );
 };
@@ -183,6 +188,35 @@ const provisionCustomerWithCompensation = async (
     }
     throw error;
   }
+};
+
+const createEmployeeProfile = async (
+  user: UserDocument,
+  session?: ClientSession,
+): Promise<void> => {
+  await new Employee({
+    userId: user._id,
+    employeeCode: `EMP-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
+    name: user.name,
+    workEmail: user.email,
+    workPhone: user.phone,
+    branchIds: [],
+    employmentType: "full_time",
+    status: "active",
+    isBookable: false,
+    acceptsOnlineBookings: false,
+    servesClientGender: "all",
+    maxConcurrentClients: 1,
+    calendarColor: "#2563EB",
+  }).save({ session });
+  await new StaffAccess({
+    userId: user._id,
+    permissions: [],
+    allBranches: true,
+    branchIds: [],
+    status: "active",
+    joinedAt: new Date(),
+  }).save({ session });
 };
 
 export const createLocalUser = async (
@@ -250,6 +284,35 @@ export class AuthService {
     }
 
     if (!user) throw new Error("Customer registration did not create a user");
+    return this.createAuthResult(user, context);
+  }
+
+  async registerEmployee(
+    input: CustomerRegistrationInput,
+    context: SessionContext = {},
+  ): Promise<AuthResult> {
+    let user: UserDocument | undefined;
+    try {
+      await mongoose.connection.transaction(async (session) => {
+        const createdUser = await createLocalUser(
+          { ...input, role: "employee" },
+          { session },
+        );
+        await createEmployeeProfile(createdUser, session);
+        user = createdUser;
+      });
+    } catch (error) {
+      if (!transactionIsUnsupported(error)) throw error;
+      const createdUser = await createLocalUser({ ...input, role: "employee" });
+      try {
+        await createEmployeeProfile(createdUser);
+        user = createdUser;
+      } catch (profileError) {
+        await User.deleteOne({ _id: createdUser._id });
+        throw profileError;
+      }
+    }
+    if (!user) throw new Error("Employee registration did not create a user");
     return this.createAuthResult(user, context);
   }
 

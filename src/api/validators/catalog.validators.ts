@@ -1,9 +1,10 @@
 import { z } from "zod";
 
 const objectIdSchema = z
-  .string()
-  .trim()
-  .regex(/^[a-f\d]{24}$/i, "Must be a valid MongoDB ObjectId");
+  .union([
+    z.string().trim().regex(/^[a-f\d]{24}$/i, "Must be a valid MongoDB ObjectId"),
+    z.object({ _id: z.string().trim().regex(/^[a-f\d]{24}$/i) }).transform((o) => o._id),
+  ]);
 
 const optionalBooleanQuery = z
   .enum(["true", "false"])

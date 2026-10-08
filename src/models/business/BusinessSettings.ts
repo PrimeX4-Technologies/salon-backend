@@ -12,6 +12,7 @@ interface IBookingSettings {
   allowWalkIns: boolean;
   allowWaitlist: boolean;
   allowProcessingOverlap: boolean;
+  requireCustomerPhone?: boolean;
 }
 
 interface ICustomerAuthSettings {
@@ -43,14 +44,15 @@ export interface IBusinessSettings {
 
 const BookingSettingsSchema = new Schema<IBookingSettings>(
   {
-    slotIntervalMinutes: { type: Number, default: 15, min: 5, max: 120 },
+    slotIntervalMinutes: { type: Number, default: 15, min: 0, max: 120 },
     minimumNoticeMinutes: { type: Number, default: 60, min: 0, max: 525_600 },
-    maximumAdvanceDays: { type: Number, default: 90, min: 1, max: 730 },
-    temporaryHoldMinutes: { type: Number, default: 10, min: 1, max: 60 },
+    maximumAdvanceDays: { type: Number, default: 90, min: 0, max: 730 },
+    temporaryHoldMinutes: { type: Number, default: 10, min: 0, max: 60 },
     cancellationWindowHours: { type: Number, default: 24, min: 0, max: 720 },
     allowWalkIns: { type: Boolean, default: true },
     allowWaitlist: { type: Boolean, default: true },
     allowProcessingOverlap: { type: Boolean, default: false },
+    requireCustomerPhone: { type: Boolean, default: true },
   },
   { _id: false },
 );

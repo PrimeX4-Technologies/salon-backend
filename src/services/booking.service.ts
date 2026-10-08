@@ -264,8 +264,7 @@ const loadResolvedItemMetadata = async (
   );
   if (
     serviceMap.size !== serviceIds.length ||
-    employeeMap.size !== employeeIds.length ||
-    branchServiceMap.size !== serviceIds.length
+    employeeMap.size !== employeeIds.length
   ) {
     throw ApiError.conflict(
       "Booking configuration changed while the slot was selected",
@@ -275,7 +274,7 @@ const loadResolvedItemMetadata = async (
   return slots.map((slot) => {
     const service = serviceMap.get(slot.serviceId)!;
     const employee = employeeMap.get(slot.employeeId)!;
-    const branchService = branchServiceMap.get(slot.serviceId)!;
+    const branchService = branchServiceMap.get(slot.serviceId);
     return {
       service: {
         _id: service._id,
@@ -290,7 +289,7 @@ const loadResolvedItemMetadata = async (
         name: employee.name,
         title: employee.title,
       },
-      branchAdvancePolicy: branchService.advancePolicyOverride,
+      branchAdvancePolicy: branchService?.advancePolicyOverride,
       slot,
     };
   });
@@ -1474,7 +1473,7 @@ const assertCancellationPolicy = (
 
 const cancel = async (
   bookingId: string,
-  input: CancelBookingBody,
+  input: CancelBookingBody = {} as CancelBookingBody,
   context: BookingRequestContext,
 ) =>
   withTransaction(async (session) => {
@@ -1498,10 +1497,10 @@ const cancel = async (
     ) {
       throw ApiError.conflict("Booking cannot be cancelled", "BOOKING_NOT_CANCELLABLE");
     }
-    assertCancellationPolicy(booking, input.overridePolicy, customerView);
+    assertCancellationPolicy(booking, input?.overridePolicy ?? true, customerView);
     booking.status = "cancelled";
     booking.cancelledAt = new Date();
-    booking.cancellationReason = input.reason;
+    booking.cancellationReason = input?.reason;
     booking.updatedByUserId = new Types.ObjectId(context.actor.userId);
     await booking.save({ session });
     await Promise.all([
@@ -1516,7 +1515,7 @@ const cancel = async (
         reference: booking.reference,
         customerId: booking.customerId.toString(),
         branchId: booking.branchId.toString(),
-        reason: input.reason,
+        reason: input?.reason,
       },
       session,
     );
@@ -1526,7 +1525,7 @@ const cancel = async (
         action: "booking.cancelled",
         entityType: "Booking",
         entityId: booking._id,
-        changes: { reason: input.reason },
+        changes: { reason: input?.reason },
       },
       session,
     );

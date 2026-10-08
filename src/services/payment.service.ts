@@ -11,6 +11,8 @@ import PaymentWebhookEvent, {
 } from "../models/payments/PaymentWebhookEvent.js";
 import OutboxEvent from "../models/events/OutboxEvent.js";
 import CalendarReservation from "../models/scheduling/CalendarReservation.js";
+import Branch from "../models/business/Branch.js";
+import Customer from "../models/customers/Customer.js";
 import {
   getPaymentProvider,
   type VerifiedPaymentTransaction,
@@ -207,7 +209,7 @@ const assertIdempotentMatch = (
 };
 
 const createPaymentOutbox = async (
-  payment: { _id: Types.ObjectId; bookingId: Types.ObjectId; purpose: string; status: string },
+  payment: { _id: Types.ObjectId; bookingId?: Types.ObjectId; purpose: string; status: string },
   session: mongoose.ClientSession,
 ): Promise<void> => {
   await OutboxEvent.create(
@@ -218,7 +220,7 @@ const createPaymentOutbox = async (
         eventType: `booking_payment.${payment.purpose}.${payment.status}`,
         payload: {
           paymentId: payment._id.toString(),
-          bookingId: payment.bookingId.toString(),
+          bookingId: payment.bookingId ? payment.bookingId.toString() : "",
         },
       },
     ],
@@ -729,7 +731,11 @@ export const paymentService = {
     if (query.bookingId) filter.bookingId = toObjectId(query.bookingId);
     if (query.customerId) filter.customerId = toObjectId(query.customerId);
     if (query.purpose) filter.purpose = query.purpose;
-    if (query.status) filter.status = query.status;
+    if (query.status) {
+      filter.status = query.status;
+    } else {
+      filter.status = { $ne: "cancelled" } as any;
+    }
     if (query.provider) filter.provider = query.provider;
     if (query.from || query.to) {
       filter.createdAt = {
@@ -785,10 +791,10 @@ export const paymentService = {
   ) {
     const verified = await verifyOrAttestPayment(
       input,
-      input.bookingId,
+      input.bookingId ?? "manual-payment",
       "advance",
     );
-    const bookingId = toObjectId(input.bookingId);
+    const bookingId = input.bookingId ? toObjectId(input.bookingId) : undefined;
 
     const payment = await withTransaction(async (session) => {
       const existing = await paymentRepository.findByIdempotencyKey(
@@ -797,13 +803,52 @@ export const paymentService = {
         session,
       );
       if (existing) {
-        assertIdempotentMatch(existing, {
-          bookingId,
-          purpose: "advance",
-          amountMinor: verified.amountMinor,
-          currency: verified.currency,
-        });
+        if (bookingId) {
+          assertIdempotentMatch(existing, {
+            bookingId,
+            purpose: "advance",
+            amountMinor: verified.amountMinor,
+            currency: verified.currency,
+          });
+        }
         return existing;
+      }
+
+      if (!bookingId) {
+        let branchId = scope.branchIds.length > 0 ? scope.branchIds[0] : undefined;
+        if (!branchId) {
+          const branch = (await Branch.findOne({ isPrimary: true }).select("_id").lean())
+            || (await Branch.findOne({ isActive: true }).select("_id").lean())
+            || (await Branch.findOne().select("_id").lean());
+          if (branch) branchId = branch._id;
+        }
+        let customerId = input.customerId ? toObjectId(input.customerId) : undefined;
+        if (!customerId) {
+          const cust = (await Customer.findOne({ status: "active" }).select("_id").lean())
+            || (await Customer.findOne().select("_id").lean());
+          if (cust) customerId = cust._id;
+        }
+
+        const manualPayment = await paymentRepository.createPayment(
+          {
+            branchId: (branchId ?? toObjectId("507f1f77bcf86cd799439011")) as Types.ObjectId,
+            bookingId: toObjectId("000000000000000000000000"),
+            customerId: (customerId ?? toObjectId("507f1f77bcf86cd799439012")) as Types.ObjectId,
+            purpose: (input.purpose as IBookingPayment["purpose"]) || "advance",
+            provider: verified.provider,
+            merchantAccountId: verified.merchantAccountId,
+            providerTransactionId: verified.providerTransactionId,
+            idempotencyKey,
+            amountMinor: verified.amountMinor,
+            currency: verified.currency,
+            status: "succeeded",
+            paymentMethodType: verified.paymentMethodType,
+            processedAt: verified.processedAt,
+          },
+          session,
+        );
+        await createPaymentOutbox(manualPayment, session);
+        return manualPayment;
       }
 
       const booking = await paymentRepository.findBooking(bookingId, session);

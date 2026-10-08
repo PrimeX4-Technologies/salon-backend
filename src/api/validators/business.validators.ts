@@ -96,14 +96,15 @@ const advancePolicySchema = z
 
 const bookingSettingsSchema = z
   .object({
-    slotIntervalMinutes: z.number().int().min(5).max(120).optional(),
+    slotIntervalMinutes: z.number().int().min(0).max(120).optional(),
     minimumNoticeMinutes: z.number().int().min(0).max(525_600).optional(),
-    maximumAdvanceDays: z.number().int().min(1).max(730).optional(),
-    temporaryHoldMinutes: z.number().int().min(1).max(60).optional(),
+    maximumAdvanceDays: z.number().int().min(0).max(730).optional(),
+    temporaryHoldMinutes: z.number().int().min(0).max(60).optional(),
     cancellationWindowHours: z.number().int().min(0).max(720).optional(),
     allowWalkIns: z.boolean().optional(),
     allowWaitlist: z.boolean().optional(),
     allowProcessingOverlap: z.boolean().optional(),
+    requireCustomerPhone: z.boolean().optional(),
   })
   .strict();
 

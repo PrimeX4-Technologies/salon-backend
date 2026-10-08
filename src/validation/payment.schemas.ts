@@ -91,12 +91,17 @@ export const customerPaymentListQuerySchema = paginationQuerySchema
 
 export const recordAdvanceBodySchema = z
   .object({
-    bookingId: objectIdSchema,
+    bookingId: objectIdSchema.optional(),
+    customerId: objectIdSchema.optional(),
+    purpose: z
+      .enum(["advance", "advance_refund", "cancellation_fee", "no_show_fee"])
+      .optional()
+      .default("advance"),
     provider: providerSchema.default("manual"),
     merchantAccountId: z.string().trim().min(1).max(255).optional(),
     providerTransactionId: z.string().trim().min(1).max(255).optional(),
     amountMinor: z.number().int().positive(),
-    currency: currencySchema,
+    currency: currencySchema.default("LKR"),
     paymentMethodType: z
       .enum(["card", "bank_transfer", "cash", "wallet", "external"])
       .optional(),
@@ -114,12 +119,12 @@ export const recordAdvanceBodySchema = z
     if (
       value.provider === "manual" &&
       value.paymentMethodType &&
-      !["cash", "bank_transfer", "external"].includes(value.paymentMethodType)
+      !["cash", "card", "bank_transfer", "external"].includes(value.paymentMethodType)
     ) {
       context.addIssue({
         code: "custom",
         path: ["paymentMethodType"],
-        message: "Manual records support cash, bank transfer, or external methods",
+        message: "Manual records support cash, card, bank transfer, or external methods",
       });
     }
   });

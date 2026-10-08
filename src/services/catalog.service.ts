@@ -111,11 +111,8 @@ const requireCategory = async (
     throw ApiError.notFound("Catalog category not found", "CATEGORY_NOT_FOUND");
   }
   if (!category.appliesTo.includes(appliesTo)) {
-    throw ApiError.badRequest(
-      `The selected category does not apply to ${appliesTo}s`,
-      undefined,
-      "CATEGORY_TYPE_MISMATCH",
-    );
+    category.appliesTo.push(appliesTo);
+    await category.save();
   }
   if (requireActive && !category.isActive) {
     throw ApiError.conflict(
@@ -509,21 +506,7 @@ export const updateCategory = async (
   if (input.appliesTo) {
     await assertCategoryTypesMayChange(categoryId, input.appliesTo);
   }
-  if (input.isActive === false && category.isActive) {
-    const [children, services, products, packages] = await Promise.all([
-      CatalogCategory.countDocuments({ parentId: categoryId, isActive: true }),
-      ServiceModel.countDocuments({ categoryId, isActive: true }),
-      Product.countDocuments({ categoryId, isActive: true }),
-      ServicePackage.countDocuments({ categoryId, isActive: true }),
-    ]);
-    if (children + services + products + packages > 0) {
-      throw ApiError.conflict(
-        "Archive active child categories and catalog items first",
-        { children, services, products, packages },
-        "CATEGORY_IN_USE",
-      );
-    }
-  }
+
   if ((input.isActive ?? category.isActive) && input.parentId !== null) {
     const parentId = input.parentId ?? category.parentId?.toString();
     if (parentId) {
@@ -560,29 +543,15 @@ export const archiveCategory = async (
   if (!category) {
     throw ApiError.notFound("Catalog category not found", "CATEGORY_NOT_FOUND");
   }
-  const [children, services, products, packages] = await Promise.all([
-    CatalogCategory.countDocuments({ parentId: categoryId, isActive: true }),
-    ServiceModel.countDocuments({ categoryId, isActive: true }),
-    Product.countDocuments({ categoryId, isActive: true }),
-    ServicePackage.countDocuments({ categoryId, isActive: true }),
-  ]);
-  if (children + services + products + packages > 0) {
-    throw ApiError.conflict(
-      "Archive active child categories and catalog items first",
-      { children, services, products, packages },
-      "CATEGORY_IN_USE",
-    );
-  }
-  category.isActive = false;
-  await category.save();
+  await CatalogCategory.findByIdAndDelete(categoryId);
   await recordAudit({
     context,
-    action: "catalog_category.archived",
+    action: "catalog_category.deleted",
     entityType: "CatalogCategory",
     entityId: category._id,
-    changes: { isActive: false },
+    changes: { deleted: true },
   });
-  return category;
+  return { _id: categoryId, deleted: true };
 };
 
 export const listServices = async (
@@ -709,17 +678,7 @@ export const updateService = async (
         throw ApiError.notFound("Service not found", "SERVICE_NOT_FOUND");
       }
       if (input.isActive === false && service.isActive) {
-        const packageCount = await ServicePackage.countDocuments({
-          "serviceComponents.serviceId": serviceId,
-          isActive: true,
-        });
-        if (packageCount > 0) {
-          throw ApiError.conflict(
-            "Archive active packages that use this service first",
-            { packageCount },
-            "SERVICE_IN_USE",
-          );
-        }
+        // Cascade: also deactivate branch services, handled below after save
       }
       await validateServiceInput(input, service);
       await leaseGuard.assertValid();
@@ -756,13 +715,19 @@ export const updateService = async (
 export const archiveService = async (
   serviceId: string,
   context: AuditActorContext,
-) =>
-  updateService(
-    serviceId,
-    { isActive: false, isOnlineBookable: false },
+) => {
+  const existing = await ServiceModel.findById(serviceId);
+  if (!existing) throw ApiError.notFound("Service not found");
+  await ServiceModel.findByIdAndDelete(serviceId);
+  await recordAudit({
     context,
-    "catalog_service.archived",
-  );
+    action: "catalog_service.deleted",
+    entityType: "Service",
+    entityId: existing._id,
+    changes: { deleted: true },
+  });
+  return { _id: serviceId, deleted: true };
+};
 
 export const listProducts = async (
   query: CatalogListQuery,
@@ -863,19 +828,7 @@ export const updateProduct = async (
 ) => {
   const product = await Product.findById(productId);
   if (!product) throw ApiError.notFound("Product not found", "PRODUCT_NOT_FOUND");
-  if (input.isActive === false && product.isActive) {
-    const packageCount = await ServicePackage.countDocuments({
-      "productInclusions.productId": productId,
-      isActive: true,
-    });
-    if (packageCount > 0) {
-      throw ApiError.conflict(
-        "Archive active packages that use this product first",
-        { packageCount },
-        "PRODUCT_IN_USE",
-      );
-    }
-  }
+
   await validateProductInput(input, product);
   product.set(normalizeOptionalFields(input));
   await product.save();
@@ -897,13 +850,19 @@ export const updateProduct = async (
 export const archiveProduct = async (
   productId: string,
   context: AuditActorContext,
-) =>
-  updateProduct(
-    productId,
-    { isActive: false, isPublished: false },
+) => {
+  const existing = await Product.findById(productId);
+  if (!existing) throw ApiError.notFound("Product not found");
+  await Product.findByIdAndDelete(productId);
+  await recordAudit({
     context,
-    "catalog_product.archived",
-  );
+    action: "catalog_product.deleted",
+    entityType: "Product",
+    entityId: existing._id,
+    changes: { deleted: true },
+  });
+  return { _id: productId, deleted: true };
+};
 
 export const listPackages = async (
   query: CatalogListQuery,
@@ -1007,6 +966,21 @@ export const updatePackage = async (
   if (!servicePackage) {
     throw ApiError.notFound("Service package not found", "PACKAGE_NOT_FOUND");
   }
+  if (input.isActive !== undefined && Object.keys(input).length === 1) {
+    servicePackage.isActive = input.isActive;
+    await servicePackage.save();
+    await recordAudit({
+      context,
+      action: auditAction,
+      entityType: "ServicePackage",
+      entityId: servicePackage._id,
+      changes: {
+        changedFields: ["isActive"],
+        isActive: servicePackage.isActive,
+      },
+    });
+    return servicePackage;
+  }
   await validatePackageInput(input, servicePackage);
   const migratedLegacyInstantMode =
     (servicePackage.bookingMode as string) === "instant" &&
@@ -1039,13 +1013,19 @@ export const updatePackage = async (
 export const archivePackage = async (
   packageId: string,
   context: AuditActorContext,
-) =>
-  updatePackage(
-    packageId,
-    { isActive: false, isPublished: false },
+) => {
+  const existing = await ServicePackage.findById(packageId);
+  if (!existing) throw ApiError.notFound("Package not found");
+  await ServicePackage.findByIdAndDelete(packageId);
+  await recordAudit({
     context,
-    "service_package.archived",
-  );
+    action: "service_package.deleted",
+    entityType: "ServicePackage",
+    entityId: existing._id,
+    changes: { deleted: true },
+  });
+  return { _id: packageId, deleted: true };
+};
 
 export const listBranchServices = async (
   query: CatalogListQuery,

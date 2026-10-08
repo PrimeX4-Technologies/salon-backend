@@ -9,6 +9,8 @@ import {
   createInquiry,
   createQuote,
   createWaitlistEntry,
+  deleteInquiry,
+  deleteQuote,
   expireBookingHolds,
   expireQuote,
   expireQuotes,
@@ -30,6 +32,7 @@ import {
   sendQuote,
   transitionBooking,
   updateBookingExternalSettlement,
+  updateInquiry,
 } from "../controllers/booking.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import {
@@ -194,6 +197,13 @@ staffBookingRouter.post(
   }),
   cancelBooking,
 );
+staffBookingRouter.delete(
+  "/bookings/:bookingId",
+  validate({
+    params: bookingIdParamsSchema,
+  }),
+  cancelBooking,
+);
 staffBookingRouter.post(
   "/bookings/:bookingId/reschedule",
   validate({
@@ -257,10 +267,20 @@ staffBookingRouter.get(
   validate({ query: inquiryListQuerySchema }),
   listInquiries,
 );
+staffBookingRouter.post(
+  "/inquiries",
+  validate({ body: createInquiryBodySchema }),
+  createInquiry,
+);
 staffBookingRouter.get(
   "/inquiries/:inquiryId",
   validate({ params: inquiryIdParamsSchema }),
   getInquiry,
+);
+staffBookingRouter.patch(
+  "/inquiries/:inquiryId",
+  validate({ params: inquiryIdParamsSchema }),
+  updateInquiry,
 );
 staffBookingRouter.post(
   "/inquiries/:inquiryId/review",
@@ -304,6 +324,16 @@ staffBookingRouter.post(
     body: scheduleAcceptedQuoteBodySchema,
   }),
   scheduleAcceptedQuote,
+);
+staffBookingRouter.delete(
+  "/inquiries/:inquiryId",
+  validate({ params: inquiryIdParamsSchema }),
+  deleteInquiry,
+);
+staffBookingRouter.delete(
+  "/quotes/:quoteId",
+  validate({ params: quoteIdParamsSchema }),
+  deleteQuote,
 );
 
 /**

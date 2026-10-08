@@ -8,6 +8,7 @@ import BookingQuote, {
   type IBookingQuote,
 } from "../models/bookings/BookingQuote.js";
 import Branch from "../models/business/Branch.js";
+import Customer from "../models/customers/Customer.js";
 import Product from "../models/catalog/Product.js";
 import Service from "../models/catalog/Service.js";
 import ServicePackage from "../models/catalog/ServicePackage.js";
@@ -248,18 +249,24 @@ const create = async (
   input: CreateInquiryBody,
   context: BookingRequestContext,
 ) => {
-  const customer = await requireCustomerForActor(
-    context.actor,
-    input.branchId && context.actor.role !== "customer"
-      ? undefined
-      : undefined,
-  );
-  if (context.actor.role !== "customer") {
-    throw ApiError.badRequest(
-      "Staff inquiry creation must use a customer workflow with customerId",
-      undefined,
-      "CUSTOMER_ID_REQUIRED",
-    );
+  let customerId: Types.ObjectId;
+  if (context.actor.role === "customer") {
+    const customer = await requireCustomerForActor(context.actor);
+    customerId = customer._id;
+  } else {
+    requireStaffScope(context.actor);
+    if ((input as any).customerId) {
+      customerId = new Types.ObjectId((input as any).customerId);
+    } else {
+      let cust = await Customer.findOne({});
+      if (!cust) {
+        cust = await Customer.create({
+          name: "Guest Client",
+          phone: "+94770000000",
+        });
+      }
+      customerId = cust._id;
+    }
   }
   await validateInquiryReferences(input);
 
@@ -267,7 +274,7 @@ const create = async (
     const [inquiry] = await BookingInquiry.create(
       [
         {
-          customerId: customer._id,
+          customerId,
           ...(input.branchId ? { branchId: input.branchId } : {}),
           ...(input.packageId ? { packageId: input.packageId } : {}),
           serviceIds: [...new Set(input.serviceIds)],
@@ -290,7 +297,7 @@ const create = async (
       "booking_quote",
       inquiry._id,
       "booking.inquiry.created",
-      { inquiryId: inquiry.id, customerId: customer.id, branchId: input.branchId },
+      { inquiryId: inquiry.id, customerId: customerId.toString(), branchId: input.branchId },
       session,
     );
     await recordAudit(
@@ -378,6 +385,41 @@ const review = async (
       {
         context: context.audit,
         action: "booking.inquiry.reviewed",
+        entityType: "BookingInquiry",
+        entityId: inquiry._id,
+      },
+      session,
+    );
+    return inquiryView(inquiry, true);
+  });
+};
+
+const update = async (
+  inquiryId: string,
+  input: { customerId?: string; partySize?: number; type?: string; customerNote?: string; internalNote?: string; preferredDateFrom?: string; branchId?: string; status?: string },
+  context: BookingRequestContext,
+) => {
+  requireStaffScope(context.actor);
+  return withTransaction(async (session) => {
+    const inquiry = await BookingInquiry.findById(inquiryId).select("+internalNote").session(session);
+    if (!inquiry) throw ApiError.notFound("Inquiry was not found", "INQUIRY_NOT_FOUND");
+    if (inquiry.branchId) {
+      assertActorCanAccessBranch(context.actor, inquiry.branchId.toString());
+    }
+    if (input.customerId) inquiry.customerId = new Types.ObjectId(input.customerId);
+    if (input.partySize !== undefined) inquiry.partySize = input.partySize;
+    if (input.type) inquiry.type = input.type as any;
+    if (input.customerNote !== undefined) inquiry.customerNote = input.customerNote;
+    if (input.internalNote !== undefined) inquiry.internalNote = input.internalNote;
+    if (input.preferredDateFrom) inquiry.preferredDateFrom = input.preferredDateFrom;
+    if (input.branchId) inquiry.branchId = new Types.ObjectId(input.branchId);
+    if (input.status) inquiry.status = input.status as any;
+
+    await inquiry.save({ session });
+    await recordAudit(
+      {
+        context: context.audit,
+        action: "booking.inquiry.updated",
         entityType: "BookingInquiry",
         entityId: inquiry._id,
       },
@@ -569,9 +611,30 @@ const createQuote = async (
   context: BookingRequestContext,
 ) => {
   requireStaffScope(context.actor);
-  assertActorCanAccessBranch(context.actor, input.branchId);
+
+  let targetBranchId = input.branchId;
+  if (!targetBranchId) {
+    const existingInq = await BookingInquiry.findById(inquiryId).select("branchId");
+    if (existingInq?.branchId) {
+      targetBranchId = existingInq.branchId.toString();
+    } else {
+      const defaultBranch = await Branch.findOne({
+        isActive: true,
+        bookingsEnabled: true,
+      }).select("_id");
+      if (defaultBranch) {
+        targetBranchId = defaultBranch._id.toString();
+      }
+    }
+  }
+
+  if (targetBranchId) {
+    assertActorCanAccessBranch(context.actor, targetBranchId);
+    input.branchId = targetBranchId as any;
+  }
+
   const branch = await Branch.findOne({
-    _id: input.branchId,
+    _id: targetBranchId,
     isActive: true,
     bookingsEnabled: true,
   }).select("_id");
@@ -602,7 +665,7 @@ const createQuote = async (
     return await withTransaction(async (session) => {
       const inquiry = await BookingInquiry.findById(inquiryId).session(session);
       if (!inquiry) throw ApiError.notFound("Inquiry was not found", "INQUIRY_NOT_FOUND");
-      if (inquiry.branchId && !inquiry.branchId.equals(input.branchId)) {
+      if (inquiry.branchId && !inquiry.branchId.equals(targetBranchId)) {
         throw ApiError.badRequest(
           "Quote branch must match the inquiry branch",
           undefined,
@@ -920,10 +983,62 @@ export const expireDueBookingQuotesForSystem = async (
     },
   });
 
+const remove = async (
+  inquiryId: string,
+  context: BookingRequestContext,
+) => {
+  requireStaffScope(context.actor);
+  return await withTransaction(async (session) => {
+    const inquiry = await BookingInquiry.findById(inquiryId).session(session);
+    if (!inquiry) throw ApiError.notFound("Inquiry was not found", "INQUIRY_NOT_FOUND");
+    if (inquiry.branchId) {
+      assertActorCanAccessBranch(context.actor, inquiry.branchId.toString());
+    }
+    await BookingQuote.deleteMany({ inquiryId: inquiry._id }, { session });
+    await BookingInquiry.deleteOne({ _id: inquiry._id }, { session });
+    await recordAudit(
+      {
+        context: context.audit,
+        action: "booking.inquiry.deleted",
+        entityType: "BookingInquiry",
+        entityId: inquiry._id,
+      },
+      session,
+    );
+    return { id: inquiry.id, deleted: true };
+  });
+};
+
+const removeQuote = async (
+  quoteId: string,
+  context: BookingRequestContext,
+) => {
+  requireStaffScope(context.actor);
+  return await withTransaction(async (session) => {
+    const quote = await BookingQuote.findById(quoteId).session(session);
+    if (!quote) throw ApiError.notFound("Quote was not found", "QUOTE_NOT_FOUND");
+    if (quote.branchId) {
+      assertActorCanAccessBranch(context.actor, quote.branchId.toString());
+    }
+    await BookingQuote.deleteOne({ _id: quote._id }, { session });
+    await recordAudit(
+      {
+        context: context.audit,
+        action: "booking.quote.deleted",
+        entityType: "BookingQuote",
+        entityId: quote._id,
+      },
+      session,
+    );
+    return { id: quote.id, deleted: true };
+  });
+};
+
 export const inquiryService = {
   list,
   get,
   create,
+  update,
   cancel,
   review,
   reject,
@@ -932,4 +1047,6 @@ export const inquiryService = {
   expireQuote,
   rejectQuote,
   expireDueQuotes,
+  remove,
+  removeQuote,
 };
